@@ -1,4 +1,5 @@
 # Run: pyinstaller --name "eBLImageProcessor" --onefile --windowed --icon="eBL_Logo.ico" --add-data "assets:assets" gui_processor.py
+
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import os
@@ -7,7 +8,7 @@ import json
 import threading
 import cv2
 
-# --- Helper function to get correct asset paths ---
+# --- Helper function to get correct asset paths (for bundled read-only assets) ---
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
@@ -18,6 +19,37 @@ def resource_path(relative_path):
         base_path = os.path.abspath(os.path.dirname(sys.argv[0]))
     return os.path.join(base_path, relative_path)
 
+# --- Helper function to get user-specific config directory ---
+APP_NAME_FOR_CONFIG = "eBLImageProcessor" # Used for creating a dedicated config folder
+
+def get_persistent_config_dir():
+    """Gets a user-specific directory for persistent application configuration."""
+    home = os.path.expanduser("~")
+    if sys.platform == "win32":
+        # APPDATA is usually C:\Users\<User>\AppData\Roaming
+        app_data_dir = os.getenv("APPDATA", os.path.join(home, "AppData", "Roaming"))
+    elif sys.platform == "darwin": # macOS
+        app_data_dir = os.path.join(home, "Library", "Application Support")
+    else: # Linux and other Unix-like
+        app_data_dir = os.getenv("XDG_CONFIG_HOME", os.path.join(home, ".config"))
+    
+    config_dir = os.path.join(app_data_dir, APP_NAME_FOR_CONFIG)
+    
+    # Create the directory if it doesn't exist
+    if not os.path.exists(config_dir):
+        try:
+            os.makedirs(config_dir, exist_ok=True)
+        except OSError as e:
+            print(f"Warning: Could not create config directory {config_dir}: {e}")
+            # Fallback to saving config next to the script/executable (less ideal for one-file EXE)
+            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'): # Running as bundled app
+                 # For one-file EXE, sys.executable is the temp path, use its dir
+                 # For one-folder EXE, sys.executable is in the main bundle dir
+                 return os.path.dirname(sys.executable)
+            else: # Running as script
+                 return os.path.abspath(os.path.dirname(sys.argv[0]))
+    return config_dir
+
 # --- Import Project Modules ---
 try:
     import resize_ruler
@@ -27,37 +59,30 @@ try:
     from object_extractor import DEFAULT_OUTPUT_FILENAME_SUFFIX as OBJECT_SUFFIX
     from raw_processor import convert_cr2_to_tiff
 except ImportError as e:
-    # Attempt to show in a simple Tkinter error box if Tk is available for startup errors
     try:
         root_check_startup = tk.Tk()
-        root_check_startup.withdraw() # Hide the main window
+        root_check_startup.withdraw()
         messagebox.showerror(
             "Startup Error", f"ERROR: Failed to import one or more project modules: {e}\n\nPlease ensure all .py files are in the same directory or Python path.")
-    except tk.TclError: # If Tkinter itself is not available
+    except tk.TclError:
         print(f"ERROR: Failed to import one or more project modules: {e}")
         print("Please ensure all .py files are in the same directory or Python path.")
     sys.exit(1)
 
 # --- Global Configurations ---
-# Note: Ruler detection parameters are within ruler_detector.py.
-# These APP_RULER_ROI constants are not directly used by the GUI logic anymore
-# but are kept for reference from your previous version.
-APP_RULER_ROI_TOP_FRACTION = 0.05
-APP_RULER_ROI_BOTTOM_FRACTION = 0.25
+CONFIG_FILENAME_ONLY = "gui_config.json"
+CONFIG_FILE_PATH = os.path.join(get_persistent_config_dir(), CONFIG_FILENAME_ONLY) # Persistent path
 
-CONFIG_FILE_NAME = "gui_config.json" # Just the filename
-INPUT_SUBDIRECTORY_NAME = "Examples" # Default input sub-folder relative to chosen folder
+INPUT_SUBDIRECTORY_NAME = "Examples"
 
-# Define asset filenames (these will be bundled with the exe in an 'assets' subfolder)
-ASSETS_SUBFOLDER = "assets"
+ASSETS_SUBFOLDER = "assets" # Assets are expected to be in this subfolder when bundled
 ICON_FILENAME_ONLY = "eBL_logo.png"
 RULER_1CM_FILENAME_ONLY = "BM_1cm_scale.tif"
 RULER_2CM_FILENAME_ONLY = "BM_2cm_scale.tif"
 RULER_5CM_FILENAME_ONLY = "BM_5cm_scale.tif"
 
-# Construct full paths using resource_path for bundled application
-CONFIG_FILE = resource_path(CONFIG_FILE_NAME)
-ICON_FILE_PATH = resource_path(os.path.join(ASSETS_SUBFOLDER, ICON_FILENAME_ONLY))
+# Construct full paths for bundled assets using resource_path
+ICON_FILE_ASSET_PATH = resource_path(os.path.join(ASSETS_SUBFOLDER, ICON_FILENAME_ONLY))
 RULER_TEMPLATE_1CM_PATH = resource_path(os.path.join(ASSETS_SUBFOLDER, RULER_1CM_FILENAME_ONLY))
 RULER_TEMPLATE_2CM_PATH = resource_path(os.path.join(ASSETS_SUBFOLDER, RULER_2CM_FILENAME_ONLY))
 RULER_TEMPLATE_5CM_PATH = resource_path(os.path.join(ASSETS_SUBFOLDER, RULER_5CM_FILENAME_ONLY))
@@ -69,16 +94,16 @@ RAW_IMAGE_EXTENSION = '.cr2'
 class ImageProcessorApp:
     def __init__(self, root_window):
         self.root = root_window
-        self.root.title("eBL Image Processor") # Updated title
+        self.root.title("eBL Image Processor")
         self.root.geometry("600x650")
 
         try:
-            if os.path.exists(ICON_FILE_PATH):
-                photo = tk.PhotoImage(file=ICON_FILE_PATH)
+            if os.path.exists(ICON_FILE_ASSET_PATH): # Use asset path for icon
+                photo = tk.PhotoImage(file=ICON_FILE_ASSET_PATH)
                 self.root.iconphoto(False, photo)
-                print(f"Icon '{ICON_FILENAME_ONLY}' loaded successfully from: {ICON_FILE_PATH}")
+                print(f"Icon '{ICON_FILENAME_ONLY}' loaded successfully from: {ICON_FILE_ASSET_PATH}")
             else:
-                print(f"Warning: Icon file '{ICON_FILENAME_ONLY}' not found at resolved path: {ICON_FILE_PATH}")
+                print(f"Warning: Icon file '{ICON_FILENAME_ONLY}' not found at resolved asset path: {ICON_FILE_ASSET_PATH}")
         except tk.TclError as e:
             print(f"Warning: Could not load icon '{ICON_FILENAME_ONLY}'. Tkinter error: {e}")
         except Exception as e:
@@ -86,7 +111,7 @@ class ImageProcessorApp:
 
         self.input_folder_var = tk.StringVar()
         self.ruler_position_var = tk.StringVar(value="top")
-        self.load_config()
+        self.load_config() # Uses CONFIG_FILE_PATH
 
         style = ttk.Style()
         style.configure("TLabel", padding=5, font=('Helvetica', 10))
@@ -171,17 +196,25 @@ class ImageProcessorApp:
     def save_config(self):
         config_data = {"last_folder": self.input_folder_var.get(), "last_ruler_position": self.ruler_position_var.get()}
         try:
-            with open(CONFIG_FILE, "w") as f: json.dump(config_data, f) # CONFIG_FILE uses resource_path
-        except IOError: print(f"Error: Could not save configuration to {CONFIG_FILE}")
+            # Ensure the config directory exists (get_persistent_config_dir creates it)
+            config_dir = get_persistent_config_dir() # Called to ensure creation
+            with open(CONFIG_FILE_PATH, "w") as f: json.dump(config_data, f) # Use full path
+            print(f"Configuration saved to: {CONFIG_FILE_PATH}")
+        except IOError as e: print(f"Error: Could not save configuration to {CONFIG_FILE_PATH}: {e}")
+        except Exception as e: print(f"Unexpected error saving configuration: {e}")
+
 
     def load_config(self):
         try:
-            if os.path.exists(CONFIG_FILE): # CONFIG_FILE uses resource_path
-                with open(CONFIG_FILE, "r") as f:
+            if os.path.exists(CONFIG_FILE_PATH): # Use full path
+                with open(CONFIG_FILE_PATH, "r") as f:
                     config_data = json.load(f)
                     self.input_folder_var.set(config_data.get("last_folder", ""))
                     self.ruler_position_var.set(config_data.get("last_ruler_position", "top"))
-        except Exception as e: print(f"Warning: Could not load or parse {CONFIG_FILE}: {e}. Using defaults.")
+                    print(f"Configuration loaded from: {CONFIG_FILE_PATH}")
+            else:
+                print(f"Configuration file not found at {CONFIG_FILE_PATH}. Using defaults.")
+        except Exception as e: print(f"Warning: Could not load or parse {CONFIG_FILE_PATH}: {e}. Using defaults.")
 
     def start_processing_thread(self):
         folder_path = self.input_folder_var.get()
@@ -200,7 +233,7 @@ class ImageProcessorApp:
         print(f"Object Extraction Background Mode: {object_bg_mode_from_gui} (fixed)")
         if not all(os.path.exists(p) for p in [RULER_TEMPLATE_1CM_PATH, RULER_TEMPLATE_2CM_PATH, RULER_TEMPLATE_5CM_PATH]):
             missing = [os.path.basename(p) for p in [RULER_TEMPLATE_1CM_PATH, RULER_TEMPLATE_2CM_PATH, RULER_TEMPLATE_5CM_PATH] if not os.path.exists(p)]
-            msg = f"Missing ruler template files: {', '.join(missing)}. Ensure they are in the '{ASSETS_SUBFOLDER}' directory next to the executable."
+            msg = f"Missing ruler template files: {', '.join(missing)}. Ensure they are in the '{ASSETS_SUBFOLDER}' directory (bundled with the app)."
             print(f"ERROR: {msg}"); messagebox.showerror("Asset Error", msg); return
         print("-" * 50)
         success_count, error_count, cr2_conv = 0, 0, 0
@@ -263,7 +296,7 @@ class ImageProcessorApp:
                 ruler_out_fname = resized_ruler_name + resize_ruler.OUTPUT_FILE_EXTENSION
                 resized_ruler_fp = os.path.join(ruler_out_dir, ruler_out_fname)
 
-                resize_ruler.resize_and_save_ruler(px_cm, chosen_ruler_path, original_filepath) # Pass original_filepath for naming context
+                resize_ruler.resize_and_save_ruler(px_cm, chosen_ruler_path, original_filepath)
                 if not os.path.exists(resized_ruler_fp): raise FileNotFoundError(f"Resized ruler file not found: {resized_ruler_fp}")
                 print(f"    Ruler resized: {os.path.basename(resized_ruler_fp)}")
 
