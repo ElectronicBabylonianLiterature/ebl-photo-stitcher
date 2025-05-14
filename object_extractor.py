@@ -1,14 +1,21 @@
-# object_extractor.py (Select Center Object)
+# object_extractor.py
 import cv2
 import numpy as np
 import os
 import sys
-import math # Needed for distance calculation
+# Assuming remove_background.py is in the same directory or Python path
+try:
+    from remove_background import create_object_mask, select_center_contour
+except ImportError:
+    print("ERROR: Could not import from remove_background.py. Ensure it's in the same directory.")
+    sys.exit(1)
+
 
 # --- Default Configuration (can be overridden by caller) ---
-DEFAULT_TARGET_BACKGROUND_COLOR_BGR = (0, 0, 0)
+DEFAULT_TARGET_BACKGROUND_COLOR_BGR = (0, 0, 0) # This is the color the object will be placed ON
+DEFAULT_EXTRACTION_BACKGROUND_COLOR_BGR = (0, 0, 0) # This is the color TO REMOVE from original
 DEFAULT_FEATHER_RADIUS_PX = 5
-DEFAULT_OUTPUT_FILENAME_SUFFIX = "_object.tif"
+DEFAULT_OUTPUT_FILENAME_SUFFIX = "_object.tif" # User specified this suffix previously
 DEFAULT_BACKGROUND_COLOR_TOLERANCE = 40
 DEFAULT_MIN_CONTOUR_AREA_FRACTION = 0.010
 
@@ -22,96 +29,75 @@ def get_mask_bounding_box(mask):
     xmin, xmax = np.where(cols)[0][[0, -1]]
     return xmin, ymin, xmax + 1, ymax + 1
 
-# --- Main Extraction Function (Modified) ---
+# --- Main Extraction Function ---
 def extract_and_save_object(
     input_image_path,
-    background_color=DEFAULT_TARGET_BACKGROUND_COLOR_BGR,
+    extraction_background_color=DEFAULT_EXTRACTION_BACKGROUND_COLOR_BGR, # Background to remove
+    output_background_color=DEFAULT_TARGET_BACKGROUND_COLOR_BGR,       # Background for the new image
     feather_radius=DEFAULT_FEATHER_RADIUS_PX,
     output_suffix=DEFAULT_OUTPUT_FILENAME_SUFFIX,
     color_tolerance=DEFAULT_BACKGROUND_COLOR_TOLERANCE,
     min_area_fraction=DEFAULT_MIN_CONTOUR_AREA_FRACTION
 ):
     print(f"  Extracting object from: {os.path.basename(input_image_path)}")
+    print(f"    Removing background color: {extraction_background_color}")
+    print(f"    Output background color: {output_background_color}")
+
     original_image = cv2.imread(input_image_path)
     if original_image is None:
         raise FileNotFoundError(f"Could not load image for object extraction: {input_image_path}")
-    h, w = original_image.shape[:2]
-    image_center_x = w / 2
-    image_center_y = h / 2
-    total_pixels = h * w
 
-    # --- Find potential object contours ---
-    lower_bound = np.array([max(0, c - color_tolerance) for c in background_color])
-    upper_bound = np.array([min(255, c + color_tolerance) for c in background_color])
-    background_mask = cv2.inRange(original_image, lower_bound, upper_bound)
-    object_mask_initial = cv2.bitwise_not(background_mask)
+    # Step 1: Create initial mask of all objects against the specified background
+    initial_object_mask = create_object_mask(
+        original_image,
+        extraction_background_color,
+        color_tolerance
+    )
+    if initial_object_mask is None or np.sum(initial_object_mask) == 0 : # Check if mask is empty
+        raise ValueError("No objects found against the specified extraction background.")
 
-    kernel = np.ones((3, 3), np.uint8)
-    object_mask_cleaned = cv2.morphologyEx(object_mask_initial, cv2.MORPH_OPEN, kernel, iterations=2)
-    object_mask_cleaned = cv2.morphologyEx(object_mask_cleaned, cv2.MORPH_CLOSE, kernel, iterations=2)
+    # Step 2: Select the center-most contour
+    selected_contour = select_center_contour(
+        original_image,
+        initial_object_mask,
+        min_area_fraction
+    )
+    if selected_contour is None:
+        raise ValueError("No suitable center object contour found meeting criteria.")
+    
+    print(f"    Selected center contour for extraction.")
 
-    contours, _ = cv2.findContours(object_mask_cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        raise ValueError("No object contours found.")
+    # Step 3: Create a final mask using only the selected contour
+    object_mask_final = np.zeros_like(initial_object_mask)
+    cv2.drawContours(object_mask_final, [selected_contour], -1, (255), thickness=cv2.FILLED)
 
-    # --- Select Contour Closest to Center ---
-    valid_contours = []
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area >= total_pixels * min_area_fraction:
-            valid_contours.append(contour)
-
-    if not valid_contours:
-         raise ValueError(f"No contours found meeting minimum area requirement ({min_area_fraction*100:.1f}%).")
-
-    closest_contour = None
-    min_distance_to_center = float('inf')
-
-    for contour in valid_contours:
-        # Calculate the centroid of the contour
-        M = cv2.moments(contour)
-        if M["m00"] == 0: # Avoid division by zero for invalid contours
-            continue
-        centroid_x = int(M["m10"] / M["m00"])
-        centroid_y = int(M["m01"] / M["m00"])
-
-        # Calculate distance from image center to contour centroid
-        distance = math.sqrt((centroid_x - image_center_x)**2 + (centroid_y - image_center_y)**2)
-
-        if distance < min_distance_to_center:
-            min_distance_to_center = distance
-            closest_contour = contour
-
-    if closest_contour is None:
-        # This should theoretically not happen if valid_contours is not empty
-        raise ValueError("Could not determine the contour closest to the center.")
-
-    print(f"    Selected contour closest to center (distance: {min_distance_to_center:.1f}px).")
-
-    # --- Proceed with the selected contour ---
-    object_mask_final = np.zeros_like(object_mask_cleaned)
-    cv2.drawContours(object_mask_final, [closest_contour], -1, (255), thickness=cv2.FILLED)
-
-    ksize = feather_radius * 4 + 1
-    sigma = feather_radius * 0.8
+    # Step 4: Apply Feathering to the Final Mask
+    ksize = feather_radius * 4 + 1 
+    sigma = feather_radius * 0.8 
     feathered_mask_raw = cv2.GaussianBlur(object_mask_final, (ksize, ksize), sigma)
     feathered_mask_normalized = feathered_mask_raw / 255.0
     feathered_mask_3channel = cv2.merge([feathered_mask_normalized] * 3)
 
-    output_canvas = np.full_like(original_image, background_color, dtype=np.uint8)
+    # Step 5: Create Output Canvas and Blend
+    # The output canvas will have the 'output_background_color'
+    output_canvas = np.full_like(original_image, output_background_color, dtype=np.uint8)
+    
     blended_image = (
         output_canvas.astype(np.float32) * (1.0 - feathered_mask_3channel) +
         original_image.astype(np.float32) * feathered_mask_3channel
     ).astype(np.uint8)
 
-    bbox = get_mask_bounding_box(object_mask_final)
+    # Step 6: Trim the Image
+    bbox = get_mask_bounding_box(object_mask_final) # Trim based on the non-feathered selected object
     if bbox is None:
         print("  Warning: Could not determine bounding box for object. Saving untrimmed.")
         cropped_image = blended_image
     else:
         xmin, ymin, xmax, ymax = bbox
         cropped_image = blended_image[ymin:ymax, xmin:xmax]
+        print(f"    Trimmed extracted object to bounding box: x=[{xmin}:{xmax}], y=[{ymin}:{ymax}]")
 
+    # Step 7: Save the Result
     base, _ = os.path.splitext(input_image_path)
     output_filepath = f"{base}{output_suffix}"
 
@@ -120,6 +106,7 @@ def extract_and_save_object(
         if not success:
             raise IOError("cv2.imwrite failed to save extracted object.")
         print(f"    Successfully saved extracted object: {output_filepath}")
+        return output_filepath # Return the path of the saved file
     except Exception as e:
         raise IOError(f"Error saving extracted object to {output_filepath}: {e}")
 
@@ -127,17 +114,34 @@ def extract_and_save_object(
 # --- Optional: Standalone execution for testing this module ---
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage for direct testing: python object_extractor.py <path_to_image>")
+        print("Usage for direct testing: python object_extractor.py <path_to_image> [background_r] [background_g] [background_b]")
         sys.exit(1)
 
     test_image_path = sys.argv[1]
+    test_extraction_bg = DEFAULT_EXTRACTION_BACKGROUND_COLOR_BGR
+    test_output_bg = DEFAULT_TARGET_BACKGROUND_COLOR_BGR
+
+    if len(sys.argv) == 5:
+        try:
+            r, g, b = int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+            test_extraction_bg = (b, g, r) # OpenCV uses BGR
+            test_output_bg = (b,g,r) # For testing, make them same
+            print(f"Using custom background for test: BGR {test_extraction_bg}")
+        except ValueError:
+            print("Invalid background color arguments. Using default.")
+
+
     if not os.path.exists(test_image_path):
          print(f"Error: Test image not found at {test_image_path}")
          sys.exit(1)
 
     print(f"--- Running Object Extractor Standalone Test ---")
     try:
-        extract_and_save_object(test_image_path) # Use default settings
+        extract_and_save_object(
+            test_image_path,
+            extraction_background_color=test_extraction_bg,
+            output_background_color=test_output_bg
+            )
         print(f"--- Standalone Test Completed Successfully ---")
     except Exception as e:
         print(f"--- Standalone Test Failed: {e} ---")

@@ -3,8 +3,9 @@ import numpy as np
 import os
 
 RULER_TARGET_PHYSICAL_WIDTHS_CM = {
-    "2cm": 2.69,
-    "5cm": 5.69
+    "1cm": 1.752173913043478,
+    "2cm": 2.802631578947368,
+    "5cm": 5.955752212389381
 }
 OUTPUT_FILENAME_SUFFIX_SEARCH = "_02"
 OUTPUT_FILENAME_SUFFIX_REPLACE = "_07"
