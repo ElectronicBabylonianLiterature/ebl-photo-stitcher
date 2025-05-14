@@ -1,4 +1,4 @@
-# Run: pyinstaller --name "eBLImageProcessor" --windowed --icon="eBL_Logo.ico" --add-data "assets:assets" gui_processor.py
+# Run: pyinstaller --name "eBLImageProcessor" --onefile --windowed --icon="eBL_Logo.ico" --add-data "assets:assets" gui_processor.py
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import os
