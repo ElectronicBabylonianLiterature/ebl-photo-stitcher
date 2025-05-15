@@ -1,0 +1,104 @@
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 7.0-c000 1.000000, 0000/00/00-00:00:00        ">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmlns:tiff="http://ns.adobe.com/tiff/1.0/"
+    xmlns:exif="http://ns.adobe.com/exif/1.0/"
+    xmlns:aux="http://ns.adobe.com/exif/1.0/aux/"
+    xmlns:exifEX="http://cipa.jp/exif/1.0/"
+    xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"
+    xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/"
+    xmlns:stEvt="http://ns.adobe.com/xap/1.0/sType/ResourceEvent#"
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:crd="http://ns.adobe.com/camera-raw-defaults/1.0/"
+   xmp:Rating="2"
+   xmp:ModifyDate="2025-05-14T14:49:51.74Z"
+   xmp:CreateDate="2025-05-14T14:49:51.74Z"
+   xmp:MetadataDate="2025-05-15T09:10:40+01:00"
+   tiff:Make="Canon"
+   tiff:Model="Canon EOS 5D Mark IV"
+   tiff:Orientation="1"
+   tiff:ImageWidth="6720"
+   tiff:ImageLength="4480"
+   tiff:PhotometricInterpretation="2"
+   tiff:SamplesPerPixel="3"
+   exif:ExifVersion="0231"
+   exif:ExposureTime="1/6"
+   exif:ShutterSpeedValue="2584963/1000000"
+   exif:FNumber="14/1"
+   exif:ApertureValue="761471/100000"
+   exif:ExposureProgram="1"
+   exif:SensitivityType="2"
+   exif:RecommendedExposureIndex="200"
+   exif:ExposureBiasValue="0/1"
+   exif:MaxApertureValue="3/1"
+   exif:MeteringMode="3"
+   exif:FocalLength="100/1"
+   exif:CustomRendered="0"
+   exif:ExposureMode="1"
+   exif:WhiteBalance="1"
+   exif:SceneCaptureType="0"
+   exif:FocalPlaneXResolution="61166933/32768"
+   exif:FocalPlaneYResolution="61166933/32768"
+   exif:FocalPlaneResolutionUnit="3"
+   exif:DateTimeOriginal="2025-05-14T14:49:51.74Z"
+   exif:PixelXDimension="6720"
+   exif:PixelYDimension="4480"
+   aux:SerialNumber="313057000869"
+   aux:LensInfo="100/1 100/1 0/0 0/0"
+   aux:Lens="EF100mm f/2.8 Macro USM"
+   aux:LensID="190"
+   aux:LensSerialNumber="0000000000"
+   aux:ImageNumber="0"
+   aux:ApproximateFocusDistance="46/100"
+   aux:FlashCompensation="0/1"
+   aux:Firmware="1.1.2"
+   exifEX:LensModel="EF100mm f/2.8 Macro USM"
+   photoshop:DateCreated="2025-05-14T14:49:51.74Z"
+   photoshop:ColorMode="3"
+   photoshop:ICCProfile=""
+   photoshop:SidecarForExtension="CR2"
+   photoshop:EmbeddedXMPDigest="AD0ACF660F79AC49FD004B2DD3BC0461"
+   xmpMM:DocumentID="EEE59C8BB512A91935DC75FDD88C097B"
+   xmpMM:OriginalDocumentID="EEE59C8BB512A91935DC75FDD88C097B"
+   xmpMM:InstanceID="xmp.iid:8fce4c9d-25d3-594b-8829-059578af2bdf"
+   dc:format="image/x-canon-cr2"
+   crd:CameraProfile="Camera Standard"
+   crd:LookName="">
+   <tiff:BitsPerSample>
+    <rdf:Seq>
+     <rdf:li>16</rdf:li>
+     <rdf:li>16</rdf:li>
+     <rdf:li>16</rdf:li>
+    </rdf:Seq>
+   </tiff:BitsPerSample>
+   <exif:ISOSpeedRatings>
+    <rdf:Seq>
+     <rdf:li>200</rdf:li>
+    </rdf:Seq>
+   </exif:ISOSpeedRatings>
+   <exif:Flash
+    exif:Fired="False"
+    exif:Return="0"
+    exif:Mode="2"
+    exif:Function="False"
+    exif:RedEyeMode="False"/>
+   <xmpMM:History>
+    <rdf:Seq>
+     <rdf:li
+      stEvt:action="saved"
+      stEvt:instanceID="xmp.iid:ca97cfa6-ccbb-9742-9c4f-5856555cfe81"
+      stEvt:when="2025-05-15T09:10:40+01:00"
+      stEvt:softwareAgent="Adobe Photoshop Camera Raw 17.3"
+      stEvt:changed="/metadata"/>
+     <rdf:li
+      stEvt:action="saved"
+      stEvt:instanceID="xmp.iid:8fce4c9d-25d3-594b-8829-059578af2bdf"
+      stEvt:when="2025-05-15T09:10:40+01:00"
+      stEvt:softwareAgent="Adobe Photoshop Camera Raw 17.3.1 (Windows)"
+      stEvt:changed="/metadata"/>
+    </rdf:Seq>
+   </xmpMM:History>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>

@@ -7,70 +7,67 @@ RULER_TARGET_PHYSICAL_WIDTHS_CM = {
     "2cm": 2.802631578947368,
     "5cm": 5.955752212389381
 }
-OUTPUT_FILENAME_SUFFIX_SEARCH = "_02"
-OUTPUT_FILENAME_SUFFIX_REPLACE = "_07"
-OUTPUT_FILE_EXTENSION = ".tif"
-RESIZE_INTERPOLATION_METHOD = cv2.INTER_CUBIC
+OUTPUT_RULER_SUFFIX = "_07" 
+OUTPUT_RULER_FILE_EXTENSION = ".tif"
+IMAGE_RESIZE_INTERPOLATION_METHOD = cv2.INTER_CUBIC
 
-def resize_and_save_ruler(pixels_per_centimeter, ruler_template_path, reference_image_path):
-    if pixels_per_centimeter <= 1:
-        raise ValueError(f"Invalid pixels_per_centimeter: {pixels_per_centimeter}")
-    if not os.path.exists(ruler_template_path):
-        raise FileNotFoundError(f"Ruler template file not found: {ruler_template_path}")
-    if not os.path.exists(os.path.dirname(reference_image_path)):
-         raise FileNotFoundError(f"Directory for reference image not found: {os.path.dirname(reference_image_path)}")
+def resize_and_save_ruler_template(
+    pixels_per_centimeter_scale,
+    chosen_digital_ruler_template_path, # Path to the original BM_1cm/2cm/5cm_scale.tif
+    # image_to_resize_path is removed, as we resize the chosen_digital_ruler_template_path itself
+    output_base_name,          
+    output_directory_path       
+):
+    if pixels_per_centimeter_scale <= 1:
+        raise ValueError(f"Invalid pixels_per_centimeter: {pixels_per_centimeter_scale}")
+    if not os.path.exists(chosen_digital_ruler_template_path):
+        raise FileNotFoundError(f"Chosen digital ruler template file not found: {chosen_digital_ruler_template_path}")
+    if not os.path.isdir(output_directory_path):
+         raise NotADirectoryError(f"Output directory not found or is not a directory: {output_directory_path}")
 
-    ruler_filename_lower = os.path.basename(ruler_template_path).lower()
+    template_filename_lower = os.path.basename(chosen_digital_ruler_template_path).lower()
     target_physical_width_cm = None
-    for key, value in RULER_TARGET_PHYSICAL_WIDTHS_CM.items():
-        if key in ruler_filename_lower:
-            target_physical_width_cm = value
+    for key_cm_str, width_val_cm in RULER_TARGET_PHYSICAL_WIDTHS_CM.items():
+        if key_cm_str in template_filename_lower: 
+            target_physical_width_cm = width_val_cm
             break
-
     if target_physical_width_cm is None:
-        raise ValueError(f"Could not determine target cm size from template filename: {ruler_filename_lower}")
+        raise ValueError(f"Could not determine target cm size from chosen digital template: {template_filename_lower}")
 
-    target_pixel_width = int(round(pixels_per_centimeter * target_physical_width_cm))
+    target_pixel_width = int(round(pixels_per_centimeter_scale * target_physical_width_cm))
     if target_pixel_width <= 0:
-        raise ValueError(f"Calculated target pixel width ({target_pixel_width}) is invalid.")
+        raise ValueError(f"Calculated target pixel width ({target_pixel_width}) for digital ruler is invalid.")
 
-    ruler_template_image = cv2.imread(ruler_template_path, cv2.IMREAD_UNCHANGED)
-    if ruler_template_image is None:
-        raise ValueError(f"Could not load ruler template image: {ruler_template_path}")
+    # Load the CHOSEN DIGITAL RULER TEMPLATE for resizing
+    digital_ruler_image_array = cv2.imread(chosen_digital_ruler_template_path, cv2.IMREAD_UNCHANGED)
+    if digital_ruler_image_array is None:
+        raise ValueError(f"Could not load digital ruler template image from: {chosen_digital_ruler_template_path}")
 
-    template_height_px, template_width_px = ruler_template_image.shape[:2]
-    if template_width_px <= 0 or template_height_px <= 0:
-         raise ValueError(f"Invalid dimensions for ruler template image: {template_width_px}x{template_height_px}")
+    current_h_px, current_w_px = digital_ruler_image_array.shape[:2]
+    if current_w_px <= 0 or current_h_px <= 0:
+         raise ValueError(f"Invalid dimensions for digital ruler template: {current_w_px}x{current_h_px}")
 
-    aspect_ratio = template_height_px / template_width_px
-    target_pixel_height = int(round(target_pixel_width * aspect_ratio))
-    if target_pixel_height <= 0:
-        raise ValueError(f"Calculated target pixel height ({target_pixel_height}) is invalid.")
+    aspect_ratio_val = current_h_px / current_w_px if current_w_px > 0 else 0
+    target_pixel_height = int(round(target_pixel_width * aspect_ratio_val)) if aspect_ratio_val > 0 else 0
+    
+    if target_pixel_width > 0 and target_pixel_height <= 0 : 
+        target_pixel_height = 1 
+    if target_pixel_width <= 0 or target_pixel_height <= 0: 
+        raise ValueError(f"Final calculated target digital ruler dimensions invalid: {target_pixel_width}x{target_pixel_height}")
 
-    resized_ruler_image = cv2.resize(
-        ruler_template_image,
+    resized_digital_ruler_img_array = cv2.resize(
+        digital_ruler_image_array,
         (target_pixel_width, target_pixel_height),
-        interpolation=RESIZE_INTERPOLATION_METHOD
+        interpolation=IMAGE_RESIZE_INTERPOLATION_METHOD
     )
 
-    reference_dir = os.path.dirname(reference_image_path)
-    reference_base_name = os.path.basename(reference_image_path)
-    reference_name_part, _ = os.path.splitext(reference_base_name)
-
-    if OUTPUT_FILENAME_SUFFIX_SEARCH in reference_name_part:
-         output_name_part = reference_name_part.replace(
-             OUTPUT_FILENAME_SUFFIX_SEARCH, OUTPUT_FILENAME_SUFFIX_REPLACE, 1
-         )
-    else:
-         output_name_part = reference_name_part
-
-    output_filename = output_name_part + OUTPUT_FILE_EXTENSION
-    output_filepath = os.path.join(reference_dir, output_filename)
+    output_ruler_filename = f"{output_base_name}{OUTPUT_RULER_SUFFIX}{OUTPUT_RULER_FILE_EXTENSION}"
+    output_ruler_filepath = os.path.join(output_directory_path, output_ruler_filename)
 
     try:
-        success = cv2.imwrite(output_filepath, resized_ruler_image)
-        if not success:
-             raise IOError("cv2.imwrite failed to save the resized ruler image.")
-        print(f"    Successfully saved resized ruler: {output_filepath}")
+        if not cv2.imwrite(output_ruler_filepath, resized_digital_ruler_img_array):
+             raise IOError("cv2.imwrite failed for resized digital ruler.")
+        print(f"    Successfully saved scaled digital ruler: {output_ruler_filepath}")
+        return output_ruler_filepath
     except Exception as e:
-        raise IOError(f"Error saving resized ruler image to {output_filepath}: {e}")
+        raise IOError(f"Error saving resized digital ruler to {output_ruler_filepath}: {e}")

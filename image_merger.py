@@ -1,113 +1,70 @@
 import cv2
 import numpy as np
 import os
+try:
+    from image_utils import paste_image_onto_canvas, convert_to_bgr_if_needed
+except ImportError:
+    print("ERROR: image_merger.py - Could not import from image_utils.py")
+    # Depending on how this module is used, you might want to sys.exit(1)
+    # For now, allow it to be imported but functions might fail if image_utils is missing.
+    paste_image_onto_canvas = None 
+    convert_to_bgr_if_needed = None
 
-PADDING_FACTOR = 0.10
-DEFAULT_BACKGROUND_COLOR_BGR = (0, 0, 0)
 
+DEFAULT_PADDING_AS_RULER_HEIGHT_FRACTION = 0.10
+DEFAULT_CANVAS_BACKGROUND_BGR_COLOR = (0, 0, 0)
+DEFAULT_OUTPUT_IMAGE_SUFFIX = "_merged.jpg"
+DEFAULT_JPEG_OUTPUT_QUALITY = 95
 
-def merge_object_and_ruler(
-    extracted_object_path,
-    scaled_ruler_path,
-    output_base_name,
-
-    background_color=DEFAULT_BACKGROUND_COLOR_BGR,
-    output_suffix="_merged.jpg",
-    output_jpeg_quality=95
+def merge_extracted_object_and_scaled_ruler(
+    extracted_object_image_path,
+    scaled_ruler_image_path,
+    output_file_base_name,
+    padding_as_ruler_height_fraction=DEFAULT_PADDING_AS_RULER_HEIGHT_FRACTION,
+    canvas_background_bgr_color=DEFAULT_CANVAS_BACKGROUND_BGR_COLOR,
+    output_image_suffix=DEFAULT_OUTPUT_IMAGE_SUFFIX,
+    jpeg_output_quality=DEFAULT_JPEG_OUTPUT_QUALITY
 ):
-    print(
-        f"  Merging Extracted Object '{os.path.basename(extracted_object_path)}' and Scaled Ruler '{os.path.basename(scaled_ruler_path)}'")
+    if paste_image_onto_canvas is None or convert_to_bgr_if_needed is None:
+        raise ImportError("image_utils.py functions not imported correctly in image_merger.py")
 
-    try:
+    print(f"  Merging: {os.path.basename(extracted_object_image_path)} + {os.path.basename(scaled_ruler_image_path)}")
 
-        img_object = cv2.imread(extracted_object_path)
-        if img_object is None:
-            raise ValueError(
-                f"Failed to load extracted object image: {extracted_object_path}")
-        if len(img_object.shape) == 2:
-            img_object = cv2.cvtColor(img_object, cv2.COLOR_GRAY2BGR)
-        elif len(img_object.shape) == 3 and img_object.shape[2] == 4:
-            img_object = cv2.cvtColor(img_object, cv2.COLOR_BGRA2BGR)
-        object_height_px, object_width_px = img_object.shape[:2]
-        print(f"    Object image loaded: {object_width_px}x{object_height_px}")
+    object_image_bgr = convert_to_bgr_if_needed(cv2.imread(extracted_object_image_path))
+    ruler_image_bgra_or_bgr = cv2.imread(scaled_ruler_image_path, cv2.IMREAD_UNCHANGED)
 
-        img_ruler = cv2.imread(scaled_ruler_path, cv2.IMREAD_UNCHANGED)
-        if img_ruler is None:
-            raise ValueError(f"Failed to load scaled ruler image: {scaled_ruler_path}")
-        ruler_height_px, ruler_width_px = img_ruler.shape[:2]
-        ruler_channels = img_ruler.shape[2] if len(img_ruler.shape) > 2 else 1
-        print(
-            f"    Scaled ruler loaded: {ruler_width_px}x{ruler_height_px}, Channels: {ruler_channels}")
+    if object_image_bgr is None:
+        raise ValueError(f"Failed to load object: {extracted_object_image_path}")
+    if ruler_image_bgra_or_bgr is None:
+        raise ValueError(f"Failed to load ruler: {scaled_ruler_image_path}")
 
-        padding_px = int(round(ruler_height_px * PADDING_FACTOR))
-        print(
-            f"    Calculated padding: {padding_px}px ({PADDING_FACTOR*100:.0f}% of ruler height)")
+    obj_h_px, obj_w_px = object_image_bgr.shape[:2]
+    ruler_h_px, ruler_w_px = ruler_image_bgra_or_bgr.shape[:2]
 
-        canvas_width_px = max(object_width_px, ruler_width_px)
-        canvas_height_px = object_height_px + padding_px + ruler_height_px
-        print(f"    Canvas dimensions: {canvas_width_px}x{canvas_height_px}")
+    calculated_padding_px = int(round(ruler_h_px * padding_as_ruler_height_fraction))
 
-        canvas = np.full((canvas_height_px, canvas_width_px, 3),
-                         background_color, dtype=np.uint8)
+    final_canvas_width_px = max(obj_w_px, ruler_w_px)
+    final_canvas_height_px = obj_h_px + calculated_padding_px + ruler_h_px
+    
+    output_canvas = np.full((final_canvas_height_px, final_canvas_width_px, 3), canvas_background_bgr_color, dtype=np.uint8)
 
-        object_start_x = (canvas_width_px - object_width_px) // 2
-        object_start_y = 0
-        ruler_start_x = (canvas_width_px - ruler_width_px) // 2
-        ruler_start_y = object_height_px + padding_px
+    obj_start_x = (final_canvas_width_px - obj_w_px) // 2
+    obj_start_y = 0
+    paste_image_onto_canvas(output_canvas, object_image_bgr, obj_start_x, obj_start_y)
 
-        canvas[object_start_y: object_start_y + object_height_px,
-               object_start_x: object_start_x + object_width_px] = img_object
+    ruler_start_x = (final_canvas_width_px - ruler_w_px) // 2
+    ruler_start_y = obj_h_px + calculated_padding_px
+    paste_image_onto_canvas(output_canvas, ruler_image_bgra_or_bgr, ruler_start_x, ruler_start_y)
+    
+    output_directory = os.path.dirname(extracted_object_image_path)
+    output_filename = f"{output_file_base_name}{output_image_suffix}"
+    output_filepath = os.path.join(output_directory, output_filename)
 
-        roi_height = min(ruler_height_px, canvas_height_px - ruler_start_y)
-        roi_width = min(ruler_width_px, canvas_width_px - ruler_start_x)
-
-        if roi_height <= 0 or roi_width <= 0:
-            print("    Warning: Calculated ruler ROI is invalid. Skipping ruler paste.")
-        else:
-            ruler_target_roi = canvas[ruler_start_y: ruler_start_y
-                                      + roi_height, ruler_start_x: ruler_start_x + roi_width]
-            img_ruler_cropped = img_ruler[0:roi_height, 0:roi_width]
-
-            if ruler_channels == 4:
-                print("    Scaled ruler has alpha channel, performing alpha blending.")
-                alpha_channel = img_ruler_cropped[:, :, 3] / 255.0
-                alpha_mask_3channel = cv2.merge(
-                    [alpha_channel, alpha_channel, alpha_channel])
-                bgr_ruler = img_ruler_cropped[:, :, :3]
-                blended_roi = cv2.convertScaleAbs(
-                    bgr_ruler * alpha_mask_3channel + ruler_target_roi * (1.0 - alpha_mask_3channel))
-                canvas[ruler_start_y: ruler_start_y + roi_height,
-                       ruler_start_x: ruler_start_x + roi_width] = blended_roi
-            elif ruler_channels == 3:
-                print("    Scaled ruler is BGR, direct pasting.")
-                canvas[ruler_start_y: ruler_start_y + roi_height,
-                       ruler_start_x: ruler_start_x + roi_width] = img_ruler_cropped
-            elif ruler_channels == 1:
-                print("    Scaled ruler is Grayscale, converting to BGR for pasting.")
-                bgr_ruler = cv2.cvtColor(img_ruler_cropped, cv2.COLOR_GRAY2BGR)
-                canvas[ruler_start_y: ruler_start_y + roi_height,
-                       ruler_start_x: ruler_start_x + roi_width] = bgr_ruler
-            else:
-                print(
-                    f"    Warning: Unsupported number of channels ({ruler_channels}) in scaled ruler. Skipping paste.")
-
-        output_dir = os.path.dirname(extracted_object_path)
-        output_filename = f"{output_base_name}{output_suffix}"
-        output_filepath = os.path.join(output_dir, output_filename)
-
-        image_save_parameters = []
-        if output_suffix.lower().endswith((".jpg", ".jpeg")):
-            image_save_parameters = [int(cv2.IMWRITE_JPEG_QUALITY), output_jpeg_quality]
-        elif output_suffix.lower().endswith(".png"):
-            pass
-
-        success = cv2.imwrite(output_filepath, canvas, image_save_parameters)
-        if not success:
-            raise IOError(
-                f"cv2.imwrite failed to save the merged image to {output_filepath}")
-        print(f"    Successfully saved merged image: {output_filepath}")
-
-    except Exception as e:
-        print(
-            f"  ERROR during merging process for {os.path.basename(extracted_object_path)}: {e}")
-        raise e
+    save_params = []
+    if output_image_suffix.lower().endswith((".jpg", ".jpeg")):
+        save_params = [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_output_quality]
+    
+    if not cv2.imwrite(output_filepath, output_canvas, save_params):
+        raise IOError(f"Failed to save merged image to {output_filepath}")
+    print(f"    Successfully saved merged image: {output_filepath}")
+    return output_filepath
