@@ -1,4 +1,4 @@
-# eBL Image Processor
+# eBL Photo Stitcher
 
 ## Table of Contents
 
