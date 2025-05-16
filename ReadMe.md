@@ -86,19 +86,21 @@ The project is modular, with specific tasks handled by different Python scripts:
         * `BM_2cm_scale.tif` (digital ruler template)
         * `BM_5cm_scale.tif` (digital ruler template)
 
-## Usage
+## Usage (Python)
 
 1.  Navigate to the project directory in your terminal.
 2.  Run the GUI application:
     ```bash
     python gui_app.py
     ```
-3.  In the GUI:
-    * **Select Image Source Folder:** Browse to the folder containing your sets of images (e.g., `BM.58103_01.cr2`, `BM.58103_02.cr2`, etc.).
-    * **Photographer:** Enter the photographer's name. This will be saved for future sessions.
-    * **Ruler Position:** Click on the abstract image representation to indicate where the physical ruler is located in your source images (used for scale detection).
-    * **Logo Options (Optional):** Check "Add Logo" and browse to your logo file if you want a logo on the final stitched image.
-    * Click **"Start Processing"**.
+    
+## Usage (GUI)
+
+1. **Select Image Source Folder:** Browse to the folder containing your sets of images (e.g., `BM.58103_01.cr2`, `BM.58103_02.cr2`, etc.).
+2. **Photographer:** Enter the photographer's name. This will be saved for future sessions.
+3. **Ruler Position:** Click on the abstract image representation to indicate where the physical ruler is located in your source images (used for scale detection).
+4. **Logo Options (Optional):** Check "Add Logo" and browse to your logo file if you want a logo on the final stitched image.
+5. Click **"Start Processing"**.
 
 The application will:
 1.  Organize images from the source folder into subfolders based on their base name.
