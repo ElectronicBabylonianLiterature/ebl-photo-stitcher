@@ -111,7 +111,9 @@ The project is modular, with specific tasks handled by different Python scripts:
 ## Usage (GUI)
 
 1. **Select Image Source Folder:** Browse to the folder containing your sets of images (e.g., `BM.58103_01.cr2`, `BM.58103_02.cr2`, etc.).
+ 
 ![Folder](img/Folder.png)
+
 2. **Photographer:** Enter the photographer's name. This will be saved for future sessions.
 3. **Ruler Position:** Click on the abstract image representation to indicate where the physical ruler is located in your source images (used for scale detection).
 4. **Logo Options (Optional):** Check "Add Logo" and browse to your logo file if you want a logo on the final stitched image.
