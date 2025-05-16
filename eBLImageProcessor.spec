@@ -3,7 +3,7 @@
 
 a = Analysis(
     ['gui_app.py'],
-    pathex=[],
+    pathex=['./lib'],
     binaries=[],
     datas=[('assets', 'assets')],
     hiddenimports=[],
@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['eBL_Logo.ico'],
+    icon=['eBL_logo.ico'],
 )

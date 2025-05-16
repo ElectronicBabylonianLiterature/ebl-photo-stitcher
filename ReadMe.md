@@ -1,5 +1,17 @@
 # eBL Image Processor
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [File Structure Overview](#file-structure-overview)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Usage (Python)](#usage-python)
+- [Usage (GUI)](#usage-gui)
+- [Configuration](#configuration)
+- [Packaging (Optional)](#packaging-optional)
+
 ## Overview
 
 The eBL Image Processor is a Python-based application designed to automate a multi-step workflow for processing sets of archaeological or cuneiform tablet images. It includes features for RAW image conversion, object extraction, ruler scale detection, digital ruler generation, image stitching, metadata embedding, and logo addition, all managed through a user-friendly GUI.
@@ -130,4 +142,4 @@ Logs and progress will be displayed in the GUI.
 You can package this application into a standalone executable using PyInstaller:
 
 ```bash
-pyinstaller --name "eBLImageProcessor" --onefile --windowed --icon="eBL_logo.ico" --add-data "assets:assets" gui_app.py
+pyinstaller eBLImageProcessor.spec

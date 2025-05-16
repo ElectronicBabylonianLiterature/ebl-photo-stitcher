@@ -1,13 +1,16 @@
-# Run: pyinstaller --name "eBLImageProcessor" --onefile --windowed --icon="eBL_Logo.ico" --add-data "assets:assets" gui_app.py
+import os
+import sys 
+script_directory = os.path.dirname(os.path.abspath(__file__)) 
+lib_directory = os.path.join(script_directory, "lib")
+if lib_directory not in sys.path:
+    sys.path.insert(0, lib_directory)
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-import os
-import sys
 import json
 import threading
 import cv2
-
+    
 try:
     from gui_utils import resource_path, get_persistent_config_dir_path, TextRedirector
     from gui_workflow_runner import run_complete_image_processing_workflow
@@ -62,7 +65,7 @@ GUI_VIEW_ORIGINAL_SUFFIX_PATTERNS = {
 class ImageProcessorApp:
     def __init__(self, root_window):
         self.root = root_window
-        self.root.title("eBL Image Processor v2.5")
+        self.root.title("eBL Image Processor v0.1")
         self.root.geometry("600x780")
         self.input_folder_var = tk.StringVar()
         self.ruler_position_var = tk.StringVar(value="top")
