@@ -65,7 +65,7 @@ GUI_VIEW_ORIGINAL_SUFFIX_PATTERNS = {
 class ImageProcessorApp:
     def __init__(self, root_window):
         self.root = root_window
-        self.root.title("eBL Image Processor v0.2")
+        self.root.title("eBL Photo Stitcher v0.2")
         self.root.geometry("600x780")
         self.input_folder_var = tk.StringVar()
         self.ruler_position_var = tk.StringVar(value="top")
