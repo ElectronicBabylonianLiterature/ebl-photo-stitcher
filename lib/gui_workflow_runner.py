@@ -5,12 +5,14 @@ import cv2
 try:
     import resize_ruler
     import ruler_detector
-    from stitch_images import process_tablet_subfolder
+    from stitch_images_adapter import process_tablet_subfolder
+    from stitch_config import MUSEUM_CONFIGS
     from object_extractor import extract_and_save_center_object, extract_specific_contour_to_image_array
     from remove_background import (
         create_foreground_mask_from_background as create_foreground_mask,
         select_contour_closest_to_image_center,
-        select_ruler_like_contour_from_list as select_ruler_like_contour
+        select_ruler_like_contour_from_list as select_ruler_like_contour,
+        get_museum_background_color
     )
     from raw_processor import convert_raw_image_to_tiff
     from put_images_in_subfolders import group_and_move_files_to_subfolders as organize_files
@@ -44,7 +46,8 @@ def run_complete_image_processing_workflow(
     temp_extracted_ruler_filename_config,
     object_artifact_suffix_config,
     progress_callback,
-    finished_callback
+    finished_callback,
+    museum_selection="British Museum"
 ):
     print(f"Workflow started for folder: {source_folder_path}")
     progress_callback(2)
@@ -146,10 +149,19 @@ def run_complete_image_processing_workflow(
                 if not os.path.exists(tmp_ruler_extract_conv_file):
                     convert_raw_image_to_tiff(
                         path_ruler_extract_img, tmp_ruler_extract_conv_file)
-                path_ruler_extract_img = tmp_ruler_extract_conv_file
-
+                path_ruler_extract_img = tmp_ruler_extract_conv_file            # Use the museum selection to get the appropriate background color
+            # The actual background detection for removing backgrounds will still use auto-detection
+            # But the output background color will be set based on the museum selection
+            output_bg_color = get_museum_background_color(museum_selection=museum_selection)
+            
+            # Extract the central object with the appropriate background
             art_fp, art_cont = extract_and_save_center_object(
-                path_ruler_extract_img, output_filename_suffix=object_artifact_suffix_config)
+                path_ruler_extract_img, 
+                source_background_detection_mode=gui_obj_bg_mode,
+                output_image_background_color=output_bg_color,
+                output_filename_suffix=object_artifact_suffix_config,
+                museum_selection=museum_selection)
+            
             accumulated_sub_progress += sub_steps_alloc["ruler_art"] * \
                 prog_per_folder
             progress_callback(current_prog_base + accumulated_sub_progress)
@@ -179,24 +191,45 @@ def run_complete_image_processing_workflow(
             accumulated_sub_progress += sub_steps_alloc["ruler_part_extract"] * \
                 prog_per_folder
             progress_callback(current_prog_base + accumulated_sub_progress)
-
             art_img_chk = cv2.imread(art_fp)
-            chosen_bm_tpl = ruler_template_5cm_asset_path
-            if art_img_chk is not None and px_cm_val > 0:
-                art_w_cm_val = art_img_chk.shape[1] / px_cm_val
-                if art_w_cm_val > 0:
-                    t1 = resize_ruler.RULER_TARGET_PHYSICAL_WIDTHS_CM["1cm"]
-                    t2 = resize_ruler.RULER_TARGET_PHYSICAL_WIDTHS_CM["2cm"]
-                    if art_w_cm_val < t1:
-                        chosen_bm_tpl = ruler_template_1cm_asset_path
-                    elif art_w_cm_val < t2:
-                        chosen_bm_tpl = ruler_template_2cm_asset_path
+            chosen_ruler_tpl = ruler_template_5cm_asset_path
+            custom_ruler_size_cm = None
+            
+            # Handle different museum ruler selections
+            if museum_selection == "British Museum":
+                # Use British Museum ruler selection logic
+                if art_img_chk is not None and px_cm_val > 0:
+                    art_w_cm_val = art_img_chk.shape[1] / px_cm_val
+                    if art_w_cm_val > 0:
+                        t1 = resize_ruler.RULER_TARGET_PHYSICAL_WIDTHS_CM["1cm"]
+                        t2 = resize_ruler.RULER_TARGET_PHYSICAL_WIDTHS_CM["2cm"]
+                        if art_w_cm_val < t1:
+                            chosen_ruler_tpl = ruler_template_1cm_asset_path
+                        elif art_w_cm_val < t2:
+                            chosen_ruler_tpl = ruler_template_2cm_asset_path
+            elif museum_selection == "Iraq Museum":
+                # Use Iraq Museum SVG ruler
+                chosen_ruler_tpl = os.path.join(os.path.dirname(ruler_template_1cm_asset_path), "IM_photo_ruler.svg")
+                custom_ruler_size_cm = 4.599
+                print(f"Using Iraq Museum ruler: {chosen_ruler_tpl}")
+            elif museum_selection == "eBL Ruler (CBS)":
+                # Use eBL Ruler
+                chosen_ruler_tpl = os.path.join(os.path.dirname(ruler_template_1cm_asset_path), "General_eBL_photo_ruler.svg")
+                custom_ruler_size_cm = 4.317
+                print(f"Using eBL Ruler (CBS): {chosen_ruler_tpl}")
+            elif museum_selection == "Non-eBL Ruler (VAM)":
+                # Use Non-eBL Ruler
+                chosen_ruler_tpl = os.path.join(os.path.dirname(ruler_template_1cm_asset_path), "General_External_photo_ruler.svg")
+                custom_ruler_size_cm = 3.248
+                print(f"Using Non-eBL Ruler (VAM): {chosen_ruler_tpl}")
+            
             accumulated_sub_progress += sub_steps_alloc["digital_ruler_choice"] * \
                 prog_per_folder
             progress_callback(current_prog_base + accumulated_sub_progress)
 
             resize_ruler.resize_and_save_ruler_template(
-                px_cm_val, chosen_bm_tpl, subfolder_name_item, subfolder_path_item)
+                px_cm_val, chosen_ruler_tpl, subfolder_name_item, subfolder_path_item, 
+                custom_ruler_size_cm=custom_ruler_size_cm)
             if tmp_iso_ruler_fp and os.path.exists(tmp_iso_ruler_fp):
                 os.remove(tmp_iso_ruler_fp)
             accumulated_sub_progress += sub_steps_alloc["digital_ruler_resize"] * \
@@ -217,16 +250,23 @@ def run_complete_image_processing_workflow(
                         subfolder_path_item, f"{os.path.splitext(os.path.basename(o_fp_to_extract))[0]}_rawobj_other.tif")
                     convert_raw_image_to_tiff(o_fp_to_extract, tmp_o_p)
                     curr_o_path, is_temp_o = tmp_o_p, True
-                    cr2_conv_total += 1
+                    cr2_conv_total += 1                # Use the same background settings for all object extractions
                 extract_and_save_center_object(
-                    curr_o_path, output_filename_suffix=object_artifact_suffix_config)
+                    curr_o_path, 
+                    source_background_detection_mode=gui_obj_bg_mode,
+                    output_image_background_color=output_bg_color,
+                    output_filename_suffix=object_artifact_suffix_config,
+                    museum_selection=museum_selection)
+                    
                 if is_temp_o and os.path.exists(curr_o_path):
                     os.remove(curr_o_path)
                 current_other_views_prog += prog_per_other_view
                 progress_callback(
                     current_prog_base + accumulated_sub_progress + current_other_views_prog)
             accumulated_sub_progress += sub_steps_alloc["other_obj"]
-
+              # Get background color from museum configuration
+            bg_color = MUSEUM_CONFIGS.get(museum_selection, {}).get("background_color", (0, 0, 0))
+            
             process_tablet_subfolder(
                 subfolder_path=subfolder_path_item,
                 main_input_folder_path=source_folder_path,
@@ -236,7 +276,8 @@ def run_complete_image_processing_workflow(
                 ruler_image_for_scale_path=ruler_for_scale_fp,
                 add_logo=gui_add_logo,
                 logo_path=gui_logo_path if gui_add_logo else None,
-                object_extraction_background_mode=gui_obj_bg_mode
+                object_extraction_background_mode=gui_obj_bg_mode,  # Use standard mode, setting is now handled internally
+                stitched_bg_color=bg_color
                 # view_gap_px_override is not passed, so stitch_images.py will use its default
             )
             total_ok += 1

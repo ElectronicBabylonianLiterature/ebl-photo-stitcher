@@ -19,11 +19,13 @@ def apply_lens_correction_if_available(raw_image_obj, image_rgb_array):
     try:
         database = lensfunpy.Database()
         
-        # Corrected attribute names for camera make and model
-        cam_manufacturer = raw_image_obj.make 
-        cam_model_name = raw_image_obj.model
+        # Get camera make and model from metadata
+        cam_manufacturer = raw_image_obj.metadata.get('make', '')
+        cam_model_name = raw_image_obj.metadata.get('model', '')
         
-        lens_model_name = None
+        # Get lens information
+        lens_model_name = raw_image_obj.metadata.get('lens', '')
+    
         # Check for lens information, which can be in various places or not present
         if hasattr(raw_image_obj, 'lens') and raw_image_obj.lens:
             if hasattr(raw_image_obj.lens, 'name') and raw_image_obj.lens.name:
@@ -102,17 +104,38 @@ def convert_raw_image_to_tiff(raw_image_input_path, tiff_output_path):
     print(f"  Converting RAW: {os.path.basename(raw_image_input_path)} to TIFF: {os.path.basename(tiff_output_path)}")
     try:
         with rawpy.imread(raw_image_input_path) as raw_data:
-            params = rawpy.Params(
-                demosaic_algorithm=rawpy.DemosaicAlgorithm.AAHD,
-                use_camera_wb=True, no_auto_bright=True, no_auto_scale=True,
-                output_bps=16, bright=1.0
-            )
-            if hasattr(params, 'sharpen_threshold'):
-                try: params.sharpen_threshold = 3000
-                except: print("    Warning: Could not set params.sharpen_threshold")
-            else: print("    Rawpy params: sharpen_threshold attribute not available.")
-
-            rgb_pixels = raw_data.postprocess(params=params)
+            # First try with auto brightness and scaling
+            try:
+                params = rawpy.Params(
+                    demosaic_algorithm=rawpy.DemosaicAlgorithm.AAHD,
+                    use_camera_wb=True,
+                    no_auto_bright=False,
+                    no_auto_scale=False,
+                    output_bps=16,
+                    bright=1.0
+                )
+                
+                # Try to set sharpen threshold if available
+                if hasattr(params, 'sharpen_threshold'):
+                    params.sharpen_threshold = 3000
+                
+                rgb_pixels = raw_data.postprocess(params=params)
+                
+            except Exception as proc_error:
+                print(f"    Warning: First processing attempt failed ({proc_error}), trying with no auto scaling")
+                # Fallback to more conservative processing
+                params = rawpy.Params(
+                    demosaic_algorithm=rawpy.DemosaicAlgorithm.AAHD,
+                    use_camera_wb=True,
+                    no_auto_bright=True,
+                    no_auto_scale=True,
+                    output_bps=16,
+                    bright=1.0
+                )
+                rgb_pixels = raw_data.postprocess(params=params)
+                # Manually scale if needed
+                rgb_pixels = (rgb_pixels / rgb_pixels.max() * (2**16-1)).astype(np.uint16)
+            
             processed_rgb_pixels = apply_lens_correction_if_available(raw_data, rgb_pixels)
             
             imageio.imwrite(tiff_output_path, processed_rgb_pixels, format='TIFF')
@@ -124,3 +147,4 @@ def convert_raw_image_to_tiff(raw_image_input_path, tiff_output_path):
     except Exception as e:
         print(f"  ERROR during RAW to TIFF conversion for {raw_image_input_path}: {e}")
         raise
+    

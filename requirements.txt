@@ -1,0 +1,7 @@
+# Core requirements for eBL Photo Stitcher
+opencv-python>=4.5.0
+numpy>=1.19.0
+imageio>=2.9.0
+rawpy>=0.16.0
+pyexiv2>=2.8.0
+cairosvg>=2.5.2

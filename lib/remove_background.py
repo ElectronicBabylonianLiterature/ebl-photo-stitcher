@@ -2,7 +2,9 @@ import cv2
 import numpy as np
 import math
 
-def detect_dominant_corner_background_color(image_bgr_array, corner_fraction=0.1, brightness_threshold=127):
+def detect_dominant_corner_background_color(image_bgr_array, corner_fraction=0.1, brightness_threshold=127, museum_selection=None):
+    # Always detect the actual background color for proper background removal
+    # This function is used both for detecting what to remove AND for setting the output background
     img_height, img_width = image_bgr_array.shape[:2]
     sample_size = int(min(img_height, img_width) * corner_fraction)
     
@@ -66,6 +68,26 @@ def select_contour_closest_to_image_center(
         if current_distance < shortest_distance:
             shortest_distance, best_contour = current_distance, contour_candidate
     return best_contour
+
+def get_museum_background_color(museum_selection=None, detected_bg_color=(0, 0, 0)):
+    """
+    Returns the appropriate background color for the output image based on museum selection.
+    For British Museum, the detected background color is used.
+    For all other museums, white is used.
+    
+    Args:
+        museum_selection: The museum selection string (e.g., "British Museum", "Iraq Museum", etc.)
+        detected_bg_color: The background color detected from the image
+        
+    Returns:
+        A tuple of BGR color values for the background
+    """
+    # For non-British Museum selections, always use white background
+    if museum_selection is not None and museum_selection != "British Museum":
+        return (255, 255, 255)
+        
+    # For British Museum or when museum_selection is None, use the detected background color
+    return detected_bg_color
 
 def select_ruler_like_contour_from_list(
     list_of_all_contours, image_pixel_width, image_pixel_height, 

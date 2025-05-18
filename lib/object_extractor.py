@@ -24,7 +24,7 @@ DEFAULT_OUTPUT_CANVAS_BACKGROUND_BGR = (0, 0, 0)
 DEFAULT_SOURCE_IMAGE_BACKGROUND_BGR_TO_REMOVE = (0, 0, 0)
 DEFAULT_EDGE_FEATHER_RADIUS_PIXELS = 5
 DEFAULT_EXTRACTED_OBJECT_FILENAME_SUFFIX = "_object.tif"
-DEFAULT_BACKGROUND_DETECTION_COLOR_TOLERANCE = 40
+DEFAULT_BACKGROUND_DETECTION_COLOR_TOLERANCE = 35
 DEFAULT_MINIMUM_OBJECT_CONTOUR_AREA_FRACTION = 0.010
 
 
@@ -92,16 +92,18 @@ def extract_and_save_center_object( # Renamed from your provided file for consis
     feather_radius_px=DEFAULT_EDGE_FEATHER_RADIUS_PIXELS,
     output_filename_suffix=DEFAULT_EXTRACTED_OBJECT_FILENAME_SUFFIX, # Parameter name used by gui_workflow_runner
     background_color_tolerance_value=DEFAULT_BACKGROUND_DETECTION_COLOR_TOLERANCE,
-    min_object_area_as_image_fraction=DEFAULT_MINIMUM_OBJECT_CONTOUR_AREA_FRACTION
+    min_object_area_as_image_fraction=DEFAULT_MINIMUM_OBJECT_CONTOUR_AREA_FRACTION,
+    museum_selection=None
 ):
     print(f"  Extracting central object from: {os.path.basename(input_image_filepath)}")
     original_image_bgr_array = cv2.imread(input_image_filepath)
     if original_image_bgr_array is None: 
         raise FileNotFoundError(f"Could not load image for object extraction: {input_image_filepath}")
-
+        
     actual_source_background_bgr_color = DEFAULT_SOURCE_IMAGE_BACKGROUND_BGR_TO_REMOVE
     if source_background_detection_mode == "auto":
-        actual_source_background_bgr_color = detect_dominant_corner_background_color(original_image_bgr_array)
+        actual_source_background_bgr_color = detect_dominant_corner_background_color(
+            original_image_bgr_array, museum_selection=museum_selection)
     elif source_background_detection_mode == "white": 
         actual_source_background_bgr_color = (255,255,255)
     

@@ -42,7 +42,7 @@ This project has been developed to streamline the image processing pipeline, ins
 * **Logo Addition:** Optionally adds a user-specified logo to the bottom of the final stitched image.
 * **Metadata Embedding:**
     * Sets basic EXIF metadata (photographer, copyright, title, DPI) using `piexif`.
-    * Applies detailed XMP metadata (DC, Photoshop, XMPRights namespaces) using `exiftool` (if installed and found in PATH).
+    * Applies detailed XMP metadata (DC, Photoshop, XMPRights namespaces) using `pyexiv2`.
 * **Output:** Saves the final composite image as a high-quality TIFF (`_stitched.tif`) and a JPEG (`_stitched.jpg`).
 * **Configuration Persistence:** Remembers the last used input folder, ruler position, photographer name, and logo settings via a `gui_config.json` file.
 
@@ -74,11 +74,9 @@ The project is modular, with specific tasks handled by different Python scripts:
     * `numpy` (for numerical operations, used by OpenCV)
     * `imageio` (for robust TIFF saving with DPI)
     * `rawpy` (for reading RAW image files)
-    * `piexif` (for writing EXIF metadata)
+    * `piexif` (for basic EXIF metadata handling)
+    * `pyexiv2` (recommended, for comprehensive metadata handling including XMP)
     * `lensfunpy` (optional, for lens corrections in RAW processing - requires Lensfun database installed system-wide)
-* **External Tools (Optional but Recommended):**
-    * **ExifTool:** For comprehensive XMP metadata writing. It must be installed and accessible in your system's PATH.
-
 ## Setup
 
 1.  Clone the repository:
@@ -88,10 +86,9 @@ The project is modular, with specific tasks handled by different Python scripts:
     ```
 2.  Install required Python libraries:
     ```bash
-    pip install opencv-python numpy imageio rawpy piexif lensfunpy
+    pip install opencv-python numpy imageio rawpy piexif lensfunpy pyexiv2
     ```
-3.  (Optional) Install [ExifTool](https://exiftool.org/) and ensure it's in your system PATH.
-4.  (Optional) Install the Lensfun database for `lensfunpy` to work. The method varies by OS.
+3.  (Optional) Install the Lensfun database for `lensfunpy` to work. The method varies by OS.
 5.  **Asset Files:**
     * Create an `assets` folder in the root of the project directory (same level as `gui_app.py`).
     * Place the following files inside the `assets` folder:

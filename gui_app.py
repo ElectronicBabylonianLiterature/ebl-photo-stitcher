@@ -1,22 +1,22 @@
+import cv2
+import threading
+import json
+from tkinter import filedialog, messagebox, ttk
+import tkinter as tk
 import os
-import sys 
-script_directory = os.path.dirname(os.path.abspath(__file__)) 
+import sys
+script_directory = os.path.dirname(os.path.abspath(__file__))
 lib_directory = os.path.join(script_directory, "lib")
 if lib_directory not in sys.path:
     sys.path.insert(0, lib_directory)
 
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
-import json
-import threading
-import cv2
-    
+
 try:
     from gui_utils import resource_path, get_persistent_config_dir_path, TextRedirector
     from gui_workflow_runner import run_complete_image_processing_workflow
     import resize_ruler
     import ruler_detector
-    from stitch_images import process_tablet_subfolder
+    from stitch_images_adapter import process_tablet_subfolder
     from object_extractor import extract_and_save_center_object, extract_specific_contour_to_image_array
     from object_extractor import DEFAULT_EXTRACTED_OBJECT_FILENAME_SUFFIX as OBJECT_ARTIFACT_SUFFIX
     from remove_background import (
@@ -34,6 +34,7 @@ except ImportError as e:
     except tk.TclError:
         print(f"ERROR: Module import failed: {e}")
     sys.exit(1)
+
 
 CONFIG_FILENAME_ONLY = "gui_config.json"
 CONFIG_FILE_PATH = os.path.join(
@@ -72,6 +73,7 @@ class ImageProcessorApp:
         self.photographer_var = tk.StringVar(value=DEFAULT_PHOTOGRAPHER)
         self.add_logo_var = tk.BooleanVar(value=False)
         self.logo_path_var = tk.StringVar(value="")
+        self.museum_var = tk.StringVar(value="British Museum")
         self.progress_var = tk.DoubleVar(value=0.0)
         self._setup_icon()
         self._setup_styles()
@@ -121,8 +123,23 @@ class ImageProcessorApp:
         self.pe.pack(side=tk.LEFT, expand=True, fill=tk.X)
 
     def _create_ruler_pos_ui(self, p):
-        f = ttk.LabelFrame(p, text="Ruler Position (in source)", padding="10")
+        f = ttk.LabelFrame(p, text="Ruler Options", padding="10")
         f.pack(fill=tk.X, pady=5)
+
+        # Museum selection row
+        museum_frame = ttk.Frame(f)
+        museum_frame.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(museum_frame, text="Museum:").pack(side=tk.LEFT, padx=(0, 5))
+        self.museum_var = tk.StringVar(value="British Museum")
+        self.museum_combo = ttk.Combobox(
+            museum_frame, textvariable=self.museum_var, width=20,
+            values=["British Museum", "Iraq Museum",
+                    "eBL Ruler (CBS)", "Non-eBL Ruler (VAM)"]
+        )
+        self.museum_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.museum_combo.bind("<<ComboboxSelected>>", self.on_museum_changed)
+
+        # Ruler position section
         ttk.Label(f, text="Click ruler location:").pack(anchor=tk.W)
         self.rcs, self.rcp, self.rbt = 120, 10, 25
         self.rc = tk.Canvas(f, width=self.rcs, height=self.rcs,
@@ -130,6 +147,12 @@ class ImageProcessorApp:
         self.rc.pack(pady=5)
         self.draw_ruler_selector()
         self.rc.bind("<Button-1>", self.on_ruler_canvas_click)
+    
+    def on_museum_changed(self, event):
+        museum_selection = self.museum_var.get()
+        print(f"Museum selected: {museum_selection}")
+        # The background color will be automatically handled by gui_workflow_runner.py
+        self.save_config()  # Save the museum selection in the config
 
     def _create_logo_options_ui(self, p):
         f = ttk.LabelFrame(p, text="Logo Options", padding="10")
@@ -187,44 +210,44 @@ class ImageProcessorApp:
         s = self.rcs
         p = self.rcp
         bt = self.rbt
-        ox1, oy1, ox2, oy2 = p+bt, p+bt, s-p-bt, s-p-bt
+        ox1, oy1, ox2, oy2 = p + bt, p + bt, s - p - bt, s - p - bt
         self.rc.create_rectangle(
             ox1, oy1, ox2, oy2, outline="gray", fill="whitesmoke", dash=(2, 2))
-        self.rc.create_text(s/2, s/2, text="Object",
+        self.rc.create_text(s / 2, s / 2, text="Object",
                             font=('Helvetica', 9, 'italic'), fill="gray")
         sp, bc, sc, tc, nd = self.ruler_position_var.get(), "lightblue", "blue", "black", 4
-        lh, lv = ox2-ox1, oy2-oy1
+        lh, lv = ox2 - ox1, oy2 - oy1
         self.rc.create_rectangle(
-            ox1, p, ox2, p+bt, fill=(sc if sp == "top" else bc), outline=tc, tags="top_zone")
-        for i in range(nd+1):
-            x = ox1+i*(lh/nd)
-            self.rc.create_line(x, p, x, p+bt*.6, fill=tc)
+            ox1, p, ox2, p + bt, fill=(sc if sp == "top" else bc), outline=tc, pyexiv2="top_zone")
+        for i in range(nd + 1):
+            x = ox1 + i * (lh / nd)
+            self.rc.create_line(x, p, x, p + bt * .6, fill=tc)
         self.rc.create_rectangle(
-            ox1, oy2, ox2, oy2+bt, fill=(sc if sp == "bottom" else bc), outline=tc, tags="bottom_zone")
-        for i in range(nd+1):
-            x = ox1+i*(lh/nd)
-            self.rc.create_line(x, oy2, x, oy2+bt*.6, fill=tc)
+            ox1, oy2, ox2, oy2 + bt, fill=(sc if sp == "bottom" else bc), outline=tc, tags="bottom_zone")
+        for i in range(nd + 1):
+            x = ox1 + i * (lh / nd)
+            self.rc.create_line(x, oy2, x, oy2 + bt * .6, fill=tc)
         self.rc.create_rectangle(
-            p, oy1, p+bt, oy2, fill=(sc if sp == "left" else bc), outline=tc, tags="left_zone")
-        for i in range(nd+1):
-            y = oy1+i*(lv/nd)
-            self.rc.create_line(p, y, p+bt*.6, y, fill=tc)
+            p, oy1, p + bt, oy2, fill=(sc if sp == "left" else bc), outline=tc, tags="left_zone")
+        for i in range(nd + 1):
+            y = oy1 + i * (lv / nd)
+            self.rc.create_line(p, y, p + bt * .6, y, fill=tc)
         self.rc.create_rectangle(
-            ox2, oy1, ox2+bt, oy2, fill=(sc if sp == "right" else bc), outline=tc, tags="right_zone")
-        for i in range(nd+1):
-            y = oy1+i*(lv/nd)
-            self.rc.create_line(ox2, y, ox2+bt*.6, y, fill=tc)
+            ox2, oy1, ox2 + bt, oy2, fill=(sc if sp == "right" else bc), outline=tc, tags="right_zone")
+        for i in range(nd + 1):
+            y = oy1 + i * (lv / nd)
+            self.rc.create_line(ox2, y, ox2 + bt * .6, y, fill=tc)
 
     def on_ruler_canvas_click(self, event):
         s, p, bt = self.rcs, self.rcp, self.rbt
-        ox1, oy1, ox2, oy2 = p+bt, p+bt, s-p-bt, s-p-bt
+        ox1, oy1, ox2, oy2 = p + bt, p + bt, s - p - bt, s - p - bt
         if ox1 <= event.x <= ox2 and p <= event.y < oy1:
             self.ruler_position_var.set("top")
-        elif ox1 <= event.x <= ox2 and oy2 < event.y <= oy2+bt:
+        elif ox1 <= event.x <= ox2 and oy2 < event.y <= oy2 + bt:
             self.ruler_position_var.set("bottom")
         elif p <= event.x < ox1 and oy1 <= event.y <= oy2:
             self.ruler_position_var.set("left")
-        elif ox2 < event.x <= ox2+bt and oy1 <= event.y <= oy2:
+        elif ox2 < event.x <= ox2 + bt and oy1 <= event.y <= oy2:
             self.ruler_position_var.set("right")
         else:
             return
@@ -246,7 +269,7 @@ class ImageProcessorApp:
     def save_config(self):
         cfg = {"last_folder": self.input_folder_var.get(), "last_ruler_position": self.ruler_position_var.get(),
                "last_photographer": self.photographer_var.get(), "last_add_logo": self.add_logo_var.get(),
-               "last_logo_path": self.logo_path_var.get()}
+               "last_logo_path": self.logo_path_var.get(), "last_museum": self.museum_var.get()}
         try:
             with open(CONFIG_FILE_PATH, "w") as f:
                 json.dump(cfg, f)
@@ -266,15 +289,18 @@ class ImageProcessorApp:
                     cfg.get("last_photographer", DEFAULT_PHOTOGRAPHER))
                 self.add_logo_var.set(cfg.get("last_add_logo", False))
                 self.logo_path_var.set(cfg.get("last_logo_path", ""))
+                self.museum_var.set(cfg.get("last_museum", "British Museum"))
             else:
                 self.photographer_var.set(DEFAULT_PHOTOGRAPHER)
                 self.add_logo_var.set(False)
                 self.logo_path_var.set("")
+                self.museum_var.set("British Museum")
         except Exception as e:
             print(f"Warn: Load config: {e}")
             self.photographer_var.set(DEFAULT_PHOTOGRAPHER)
             self.add_logo_var.set(False)
             self.logo_path_var.set("")
+            self.museum_var.set("British Museum")
         self.toggle_logo_path_entry()
 
     def update_progress_bar(self, value): self.progress_var.set(
@@ -291,7 +317,11 @@ class ImageProcessorApp:
         ph = self.photographer_var.get()
         al = self.add_logo_var.get()
         lp = self.logo_path_var.get()
-        obm = "auto"
+        ms = self.museum_var.get()
+        obm = "auto"        # Background mode is set to "auto" by default
+        # The actual background detection logic is handled in gui_workflow_runner.py
+        # based on the museum_selection parameter
+
         if not fp or not os.path.isdir(fp):
             messagebox.showerror("Error", "Select valid input folder.")
             return
@@ -303,7 +333,7 @@ class ImageProcessorApp:
         self.lt.configure(state=tk.NORMAL)
         self.lt.delete('1.0', tk.END)
         self.lt.configure(state=tk.DISABLED)
-        print("Starting processing...\n")
+        print(f"Starting processing with {ms} ruler...\n")
         self.prb.config(state=tk.DISABLED)
         self.update_progress_bar(0)
 
@@ -324,7 +354,8 @@ class ImageProcessorApp:
                              TEMP_EXTRACTED_RULER_FOR_SCALING_FILENAME,
                              OBJECT_ARTIFACT_SUFFIX,
                              self.update_progress_bar,
-                             self.processing_finished_ui_update
+                             self.processing_finished_ui_update,
+                             self.museum_var.get()
                          ),
                          daemon=True).start()
 
