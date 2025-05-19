@@ -1,9 +1,38 @@
-"""
-This module provides the main function for running the image processing workflow from the GUI.
-It uses the refactored workflow implementation behind the scenes.
-"""
+import os
+import sys
+import cv2
 
-from workflow.runner import run_complete_image_processing_workflow
+try:
+    import resize_ruler
+    import ruler_detector
+    from stitch_images_adapter import process_tablet_subfolder
+    from stitch_config import MUSEUM_CONFIGS
+    from object_extractor import extract_and_save_center_object, extract_specific_contour_to_image_array
+    from remove_background import (
+        create_foreground_mask_from_background as create_foreground_mask,
+        select_contour_closest_to_image_center,
+        select_ruler_like_contour_from_list as select_ruler_like_contour,
+        get_museum_background_color
+    )
+    from raw_processor import convert_raw_image_to_tiff
+    from put_images_in_subfolders import group_and_move_files_to_subfolders as organize_files
+except ImportError as e:
+    print(
+        f"ERROR in gui_workflow_runner.py: Failed to import a processing module: {e}")
+    def _placeholder_func(
+        *args, **kwargs): print(f"Error: Missing module for {args[0] if args else 'operation'}")
+    resize_ruler = type(
+        'module', (), {'resize_and_save_ruler_template': _placeholder_func})
+    ruler_detector = type(
+        'module', (), {'estimate_pixels_per_centimeter_from_ruler': _placeholder_func})
+    process_tablet_subfolder = _placeholder_func
+    extract_and_save_center_object = lambda *a, **kw: (None, None)
+    extract_specific_contour_to_image_array = _placeholder_func
+    create_foreground_mask = _placeholder_func
+    select_contour_closest_to_image_center = _placeholder_func
+    select_ruler_like_contour = _placeholder_func
+    convert_raw_image_to_tiff = _placeholder_func
+    organize_files = lambda *a: []
 
 
 def run_complete_image_processing_workflow(

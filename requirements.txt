@@ -5,5 +5,3 @@ imageio>=2.9.0
 rawpy>=0.16.0
 pyexiv2>=2.8.0
 cairosvg>=2.5.2
-attrs>=21.4.0
-typing-extensions>=4.0.0
