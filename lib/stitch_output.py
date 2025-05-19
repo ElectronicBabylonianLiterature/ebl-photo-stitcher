@@ -14,9 +14,9 @@ from stitch_config import (
 )
 
 try:
-    from pure_metadata import apply_all_metadata, set_basic_exif_metadata, is_exiv2_available
+    from metadata import apply_metadata
 except ImportError as e:
-    print(f"CRITICAL ERROR in stitch_output.py: Could not import metadata utils: {e}")
+    print(f"CRITICAL ERROR in stitch_output.py: Could not import metadata modules: {e}")
     raise
 
 def save_stitched_output(
@@ -106,16 +106,17 @@ def save_jpg_output(image, output_path):
 
 def apply_metadata(image_path, output_base_name, photographer_name, output_dpi):
     """Apply EXIF and XMP metadata to image files (TIFF or JPG)."""
+    from metadata import apply_metadata as apply_metadata_impl
+    
     file_ext = os.path.splitext(image_path.lower())[1]
     print(f"    Setting metadata for {file_ext[1:].upper()}: {os.path.basename(image_path)}...")
     
     year = str(datetime.date.today().year)
     copyright_text = f"{STITCH_CREDIT_LINE}"
     
-    # Use the pure Python metadata handling
-    metadata_applied = apply_all_metadata(
-        image_path, 
-        image_title=output_base_name, 
+    success = apply_metadata_impl(
+        image_path=image_path, 
+        title=output_base_name, 
         photographer_name=photographer_name,
         institution_name=STITCH_INSTITUTION, 
         credit_line_text=STITCH_CREDIT_LINE,
@@ -124,14 +125,5 @@ def apply_metadata(image_path, output_base_name, photographer_name, output_dpi):
         image_dpi=output_dpi
     )
     
-    # Fall back to basic EXIF metadata if the pure Python approach fails
-    if not metadata_applied:
-        print(f"      Falling back to basic EXIF metadata for {file_ext[1:].upper()}.")
-        set_basic_exif_metadata(
-            image_path, 
-            output_base_name, 
-            photographer_name, 
-            STITCH_INSTITUTION, 
-            copyright_text, 
-            output_dpi
-        )
+    if not success:
+        print(f"      Failed to apply metadata to {file_ext[1:].upper()}.")
