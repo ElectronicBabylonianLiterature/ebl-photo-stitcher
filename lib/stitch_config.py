@@ -60,4 +60,4 @@ MUSEUM_CONFIGS = {
 # Metadata defaults
 STITCH_INSTITUTION = "LMU Munich"
 STITCH_CREDIT_LINE = "The image was produced with funding from the European Research Council (ERC) under the European Union's Horizon Europe research and innovation programme (Grant agreement No. 101171038). Grant Acronym RECC (DOI: 10.3030/101171038). Published under a CC BY NC 4.0 license."
-STITCH_XMP_USAGE_TERMS = f"Contact {STITCH_INSTITUTION} for usage rights."
+STITCH_XMP_USAGE_TERMS = f"Published under a CC BY NC 4.0 license."

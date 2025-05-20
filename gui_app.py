@@ -1,24 +1,28 @@
-import cv2
-import threading
-import json
-from tkinter import filedialog, messagebox, ttk
-import tkinter as tk
 import os
 import sys
+
+# --- Start of sys.path modification ---
+# Ensure lib_directory is added to sys.path absolutely first for this script's context
 script_directory = os.path.dirname(os.path.abspath(__file__))
 lib_directory = os.path.join(script_directory, "lib")
 if lib_directory not in sys.path:
-    sys.path.insert(0, lib_directory)
+    sys.path.insert(0, lib_directory) # Try insert at the beginning again
+# --- End of sys.path modification ---
 
-
+# Imports from our 'lib' directory - these MUST be resolvable now
 try:
     from gui_utils import resource_path, get_persistent_config_dir_path, TextRedirector
+    from gui_config_manager import (
+        save_config as save_app_config, 
+        load_config as load_app_config, 
+        get_default_config_values, 
+        DEFAULT_PHOTOGRAPHER
+    )
     from gui_workflow_runner import run_complete_image_processing_workflow
-    import resize_ruler
+    import resize_ruler 
     import ruler_detector
     from stitch_images_adapter import process_tablet_subfolder
-    from object_extractor import extract_and_save_center_object, extract_specific_contour_to_image_array
-    from object_extractor import DEFAULT_EXTRACTED_OBJECT_FILENAME_SUFFIX as OBJECT_ARTIFACT_SUFFIX
+    from object_extractor import extract_and_save_center_object, extract_specific_contour_to_image_array, DEFAULT_EXTRACTED_OBJECT_FILENAME_SUFFIX as OBJECT_ARTIFACT_SUFFIX
     from remove_background import (
         create_foreground_mask_from_background as create_foreground_mask,
         select_contour_closest_to_image_center,
@@ -27,18 +31,27 @@ try:
     from raw_processor import convert_raw_image_to_tiff
     from put_images_in_subfolders import group_and_move_files_to_subfolders as organize_to_subfolders
 except ImportError as e:
+    # This error handling for imports from lib is crucial
+    # Determine the expected absolute path to lib for a more informative error message
+    expected_lib_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib")
+    # Attempt to show a Tkinter error box, but have a print fallback if Tkinter itself fails.
     try:
-        root_err = tk.Tk()
-        root_err.withdraw()
-        messagebox.showerror("Startup Error", f"Module import failed: {e}")
-    except tk.TclError:
-        print(f"ERROR: Module import failed: {e}")
+        root_err_tk = tk.Tk() # This line might fail if tk is not yet imported or if display is not available
+        root_err_tk.withdraw()
+        messagebox.showerror("Startup Error", f"Critical library module import failed: {e}\nAttempted to load from 'lib' package. Ensure 'lib' directory exists at '{expected_lib_path}' and contains all required modules and an __init__.py file.")
+    except Exception: # Broad except because Tkinter might not be initializable
+        print(f"ERROR: Critical library module import failed: {e}\nAttempted to load from 'lib' package. Ensure 'lib' directory exists at '{expected_lib_path}' and contains all required modules and an __init__.py file.")
     sys.exit(1)
 
+# Standard library imports (can come after lib imports if there are no further dependencies from lib back to them at import time)
+import cv2
+import threading
+import json
+from tkinter import filedialog, messagebox, ttk # ttk should be here
+import tkinter as tk # tk is used in the except block above, so it's fine here or earlier
+from PIL import Image, ImageTk, ImageDraw
 
-CONFIG_FILENAME_ONLY = "gui_config.json"
-CONFIG_FILE_PATH = os.path.join(
-    get_persistent_config_dir_path(), CONFIG_FILENAME_ONLY)
+# Constants not related to save/load config can remain or be managed elsewhere if appropriate
 ASSETS_SUBFOLDER = "assets"
 ICON_FILENAME_ONLY = "eBL_logo.png"
 RULER_1CM_FILENAME_ONLY = "BM_1cm_scale.tif"
@@ -54,31 +67,41 @@ RULER_TEMPLATE_5CM_PATH_ASSET = resource_path(
     os.path.join(ASSETS_SUBFOLDER, RULER_5CM_FILENAME_ONLY))
 VALID_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp')
 RAW_IMAGE_EXTENSION = '.cr2'
-DEFAULT_PHOTOGRAPHER = "Ivor Kerslake"
+# DEFAULT_PHOTOGRAPHER is now imported
 TEMP_EXTRACTED_RULER_FOR_SCALING_FILENAME = "temp_isolated_ruler.tif"
 
+# CORRECTED: Ensure this matches the numeric mapping in stitch_config.STITCH_VIEW_PATTERNS_CONFIG
+# stitch_config.py has: top: _03, bottom: _04
 GUI_VIEW_ORIGINAL_SUFFIX_PATTERNS = {
-    "obverse": "_01.", "reverse": "_02.", "bottom": "_03.",
-    "top": "_04.", "right": "_05.", "left": "_06."
+    "obverse": "_01.", 
+    "reverse": "_02.", 
+    "top": "_03.",      # Was _04., changed to match stitch_config for consistency
+    "bottom": "_04.",   # Was _03., changed to match stitch_config for consistency
+    "left": "_05.",      # stitch_config has _05 for left
+    "right": "_06."     # stitch_config has _06 for right
 }
-
 
 class ImageProcessorApp:
     def __init__(self, root_window):
         self.root = root_window
         self.root.title("eBL Photo Stitcher v0.2")
         self.root.geometry("600x780")
+        
+        self.config_file_path = os.path.join(get_persistent_config_dir_path(), "gui_config.json")
+
         self.input_folder_var = tk.StringVar()
-        self.ruler_position_var = tk.StringVar(value="top")
-        self.photographer_var = tk.StringVar(value=DEFAULT_PHOTOGRAPHER)
-        self.add_logo_var = tk.BooleanVar(value=False)
-        self.logo_path_var = tk.StringVar(value="")
-        self.museum_var = tk.StringVar(value="British Museum")
+        self.ruler_position_var = tk.StringVar() 
+        self.photographer_var = tk.StringVar() 
+        self.add_logo_var = tk.BooleanVar() 
+        self.logo_path_var = tk.StringVar()
+        self.museum_var = tk.StringVar() 
         self.progress_var = tk.DoubleVar(value=0.0)
+        
         self._setup_icon()
         self._setup_styles()
         self._create_widgets()
-        self.load_config()
+        self.load_config() 
+        self.on_museum_changed(None) 
 
     def _setup_icon(self):
         try:
@@ -145,14 +168,21 @@ class ImageProcessorApp:
         self.rc = tk.Canvas(f, width=self.rcs, height=self.rcs,
                             bg="lightgray", relief=tk.SUNKEN, borderwidth=1)
         self.rc.pack(pady=5)
-        self.draw_ruler_selector()
+        self.draw_ruler_selector() # Initial draw
         self.rc.bind("<Button-1>", self.on_ruler_canvas_click)
     
     def on_museum_changed(self, event):
         museum_selection = self.museum_var.get()
         print(f"Museum selected: {museum_selection}")
-        # The background color will be automatically handled by gui_workflow_runner.py
-        self.save_config()  # Save the museum selection in the config
+        if museum_selection == "Iraq Museum":
+            self.ruler_position_var.set("bottom-left-fixed") 
+        else:
+            # If switching away from Iraq Museum and it was on the fixed pos, revert to a default like "top"
+            if self.ruler_position_var.get() == "bottom-left-fixed":
+                self.ruler_position_var.set("top")
+        self.draw_ruler_selector() 
+        if event: # Only save config if it's a user interaction, not initial setup
+            self.save_config()
 
     def _create_logo_options_ui(self, p):
         f = ttk.LabelFrame(p, text="Logo Options", padding="10")
@@ -207,38 +237,79 @@ class ImageProcessorApp:
 
     def draw_ruler_selector(self):
         self.rc.delete("all")
-        s = self.rcs
-        p = self.rcp
-        bt = self.rbt
-        ox1, oy1, ox2, oy2 = p + bt, p + bt, s - p - bt, s - p - bt
+        s = self.rcs # canvas_size
+        p = self.rcp # padding
+        bt = self.rbt # band_thickness
+        ox1, oy1, ox2, oy2 = p + bt, p + bt, s - p - bt, s - p - bt # Object box corners
+        
         self.rc.create_rectangle(
             ox1, oy1, ox2, oy2, outline="gray", fill="whitesmoke", dash=(2, 2))
         self.rc.create_text(s / 2, s / 2, text="Object",
                             font=('Helvetica', 9, 'italic'), fill="gray")
-        sp, bc, sc, tc, nd = self.ruler_position_var.get(), "lightblue", "blue", "black", 4
-        lh, lv = ox2 - ox1, oy2 - oy1
-        self.rc.create_rectangle(
-            ox1, p, ox2, p + bt, fill=(sc if sp == "top" else bc), outline=tc, pyexiv2="top_zone")
-        for i in range(nd + 1):
-            x = ox1 + i * (lh / nd)
-            self.rc.create_line(x, p, x, p + bt * .6, fill=tc)
-        self.rc.create_rectangle(
-            ox1, oy2, ox2, oy2 + bt, fill=(sc if sp == "bottom" else bc), outline=tc, tags="bottom_zone")
-        for i in range(nd + 1):
-            x = ox1 + i * (lh / nd)
-            self.rc.create_line(x, oy2, x, oy2 + bt * .6, fill=tc)
-        self.rc.create_rectangle(
-            p, oy1, p + bt, oy2, fill=(sc if sp == "left" else bc), outline=tc, tags="left_zone")
-        for i in range(nd + 1):
-            y = oy1 + i * (lv / nd)
-            self.rc.create_line(p, y, p + bt * .6, y, fill=tc)
-        self.rc.create_rectangle(
-            ox2, oy1, ox2 + bt, oy2, fill=(sc if sp == "right" else bc), outline=tc, tags="right_zone")
-        for i in range(nd + 1):
-            y = oy1 + i * (lv / nd)
-            self.rc.create_line(ox2, y, ox2 + bt * .6, y, fill=tc)
+        
+        current_museum = self.museum_var.get()
+        is_iraq_museum = (current_museum == "Iraq Museum")
+
+        sp = self.ruler_position_var.get() # selected_position
+        active_fill_color = "lightblue"
+        selected_fill_color = "blue"
+        disabled_fill_color = "#e0e0e0"
+        iraq_fixed_fill_color = selected_fill_color 
+        text_color = "black"
+        nd = 4 # number of divisions for ticks
+        lh, lv = ox2 - ox1, oy2 - oy1 # object box width and height
+
+        top_fill = disabled_fill_color if is_iraq_museum else (selected_fill_color if sp == "top" else active_fill_color)
+        bottom_fill = disabled_fill_color if is_iraq_museum else (selected_fill_color if sp == "bottom" else active_fill_color)
+        left_fill = disabled_fill_color if is_iraq_museum else (selected_fill_color if sp == "left" else active_fill_color)
+        right_fill = disabled_fill_color if is_iraq_museum else (selected_fill_color if sp == "right" else active_fill_color)
+
+        # Top band
+        self.rc.create_rectangle(ox1, p, ox2, p + bt, fill=top_fill, outline=text_color, tags="top_zone")
+        if not is_iraq_museum:
+            for i in range(nd + 1):
+                x = ox1 + i * (lh / nd)
+                self.rc.create_line(x, p, x, p + bt * .6, fill=text_color)
+        
+        # Bottom band
+        self.rc.create_rectangle(ox1, oy2, ox2, oy2 + bt, fill=bottom_fill, outline=text_color, tags="bottom_zone")
+        if not is_iraq_museum:
+            for i in range(nd + 1):
+                x = ox1 + i * (lh / nd)
+                self.rc.create_line(x, oy2, x, oy2 + bt * .6, fill=text_color)
+
+        # Left band
+        self.rc.create_rectangle(p, oy1, p + bt, oy2, fill=left_fill, outline=text_color, tags="left_zone")
+        if not is_iraq_museum:
+            for i in range(nd + 1):
+                y = oy1 + i * (lv / nd)
+                self.rc.create_line(p, y, p + bt * .6, y, fill=text_color)
+
+        # Right band
+        self.rc.create_rectangle(ox2, oy1, ox2 + bt, oy2, fill=right_fill, outline=text_color, tags="right_zone")
+        if not is_iraq_museum:
+            for i in range(nd + 1):
+                y = oy1 + i * (lv / nd)
+                self.rc.create_line(ox2, y, ox2 + bt * .6, y, fill=text_color)
+
+        if is_iraq_museum:
+            # For Iraq Museum, draw a selected square in the bottom-left corner area
+            # This square should fill the corner from the padding to the object box.
+            cs_x1 = p # Outer padding edge on the left
+            cs_y1 = oy2 # Top edge of the bottom band (aligned with object bottom)
+            cs_x2 = p + bt # Inner edge of the left band (aligned with object left)
+            cs_y2 = oy2 + bt # Bottom edge of the bottom band
+            self.rc.create_rectangle(cs_x1, cs_y1, cs_x2, cs_y2, fill=iraq_fixed_fill_color, outline=text_color, tags="iraq_fixed_pos")
+            # Optional: Add text to indicate it's fixed
+            self.rc.create_text(p + bt/2, oy2 + bt/2, text="IM", font=('Helvetica', 7, 'bold'), fill="white")
 
     def on_ruler_canvas_click(self, event):
+        current_museum = self.museum_var.get()
+        if current_museum == "Iraq Museum":
+            # Clicks are disabled for Iraq Museum as position is fixed
+            print("Ruler position is fixed for Iraq Museum.")
+            return 
+
         s, p, bt = self.rcs, self.rcp, self.rbt
         ox1, oy1, ox2, oy2 = p + bt, p + bt, s - p - bt, s - p - bt
         if ox1 <= event.x <= ox2 and p <= event.y < oy1:
@@ -267,40 +338,27 @@ class ImageProcessorApp:
             self.input_folder_var.set(fsel)
 
     def save_config(self):
-        cfg = {"last_folder": self.input_folder_var.get(), "last_ruler_position": self.ruler_position_var.get(),
-               "last_photographer": self.photographer_var.get(), "last_add_logo": self.add_logo_var.get(),
-               "last_logo_path": self.logo_path_var.get(), "last_museum": self.museum_var.get()}
-        try:
-            with open(CONFIG_FILE_PATH, "w") as f:
-                json.dump(cfg, f)
-                print(f"Config saved: {CONFIG_FILE_PATH}")
-        except Exception as e:
-            print(f"Error saving config: {e}")
+        cfg_data = {
+            "last_folder": self.input_folder_var.get(), 
+            "last_ruler_position": self.ruler_position_var.get(),
+            "last_photographer": self.photographer_var.get(), 
+            "last_add_logo": self.add_logo_var.get(),
+            "last_logo_path": self.logo_path_var.get(), 
+            "last_museum": self.museum_var.get()
+        }
+        save_app_config(self.config_file_path, cfg_data)
 
     def load_config(self):
-        try:
-            if os.path.exists(CONFIG_FILE_PATH):
-                with open(CONFIG_FILE_PATH, "r") as f:
-                    cfg = json.load(f)
-                self.input_folder_var.set(cfg.get("last_folder", ""))
-                self.ruler_position_var.set(
-                    cfg.get("last_ruler_position", "top"))
-                self.photographer_var.set(
-                    cfg.get("last_photographer", DEFAULT_PHOTOGRAPHER))
-                self.add_logo_var.set(cfg.get("last_add_logo", False))
-                self.logo_path_var.set(cfg.get("last_logo_path", ""))
-                self.museum_var.set(cfg.get("last_museum", "British Museum"))
-            else:
-                self.photographer_var.set(DEFAULT_PHOTOGRAPHER)
-                self.add_logo_var.set(False)
-                self.logo_path_var.set("")
-                self.museum_var.set("British Museum")
-        except Exception as e:
-            print(f"Warn: Load config: {e}")
-            self.photographer_var.set(DEFAULT_PHOTOGRAPHER)
-            self.add_logo_var.set(False)
-            self.logo_path_var.set("")
-            self.museum_var.set("British Museum")
+        loaded_cfg = load_app_config(self.config_file_path)
+        defaults = get_default_config_values()
+        
+        self.input_folder_var.set(loaded_cfg.get("last_folder", defaults["last_folder"]))
+        self.ruler_position_var.set(loaded_cfg.get("last_ruler_position", defaults["last_ruler_position"]))
+        self.photographer_var.set(loaded_cfg.get("last_photographer", defaults["last_photographer"]))
+        self.add_logo_var.set(loaded_cfg.get("last_add_logo", defaults["last_add_logo"]))
+        self.logo_path_var.set(loaded_cfg.get("last_logo_path", defaults["last_logo_path"]))
+        self.museum_var.set(loaded_cfg.get("last_museum", defaults["last_museum"]))
+        
         self.toggle_logo_path_entry()
 
     def update_progress_bar(self, value): self.progress_var.set(
@@ -355,7 +413,8 @@ class ImageProcessorApp:
                              OBJECT_ARTIFACT_SUFFIX,
                              self.update_progress_bar,
                              self.processing_finished_ui_update,
-                             self.museum_var.get()
+                             self.museum_var.get(),
+                             self.root # ADDED: Pass the main app window as parent for dialogs
                          ),
                          daemon=True).start()
 

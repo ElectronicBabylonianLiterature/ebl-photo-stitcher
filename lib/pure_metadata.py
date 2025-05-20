@@ -1,6 +1,6 @@
 """
 Pure Python metadata handling module.
-This module uses pyexiv2 to handle all types of metadata (EXIF, XMP, IPTC) when available.
+This module uses pyexiv2 or pyexiv2 to handle all types of metadata (EXIF, XMP, IPTC) when available.
 """
 
 import os
@@ -10,20 +10,13 @@ import piexif
 import cv2
 import shutil
 
-# Try to import pyexiv2 - modern version
+# Try to import pyexiv2 modules (multiple possible package names)
 pyexiv2 = None
 exiv2_module_name = None
 
 try:
     import pyexiv2
     exiv2_module_name = "pyexiv2"
-    print("Imported pyexiv2 module successfully")
-    
-    # Check which API style the imported module uses
-    if hasattr(pyexiv2, 'Image'):
-        print("Using modern pyexiv2 API with Image class")
-    else:
-        print("WARNING: The installed pyexiv2 module doesn't provide the expected API")
 except ImportError:
     print("Warning: pyexiv2 not installed. Some metadata functionality will be limited.")
     print("To install: pip install pyexiv2")
@@ -58,7 +51,7 @@ def set_basic_exif_metadata(image_path, image_title, photographer_name, institut
             exif_dictionary["0th"][piexif.ImageIFD.Copyright] = copyright_text.encode('utf-8')
             # Additional copyright tag for some readers
             exif_dictionary["0th"][40095] = copyright_text.encode('utf-8')
-            exif_dictionary["0th"][piexif.ImageIFD.ImageDescription] = image_title.encode('utf-8')
+            exif_dictionary["0th"][piexif.ImageIFD.ImageDescription] = copyright_text.encode('utf-8')
             exif_dictionary["0th"][piexif.ImageIFD.Software] = "eBL Photo Stitcher".encode('utf-8')
             exif_dictionary["0th"][piexif.ImageIFD.XResolution] = (image_dpi, 1)
             exif_dictionary["0th"][piexif.ImageIFD.YResolution] = (image_dpi, 1)
@@ -106,213 +99,57 @@ def set_basic_exif_metadata(image_path, image_title, photographer_name, institut
 
 def clean_image_metadata(image_path):
     """Clean problematic metadata like shape data from the image"""
+    temp_file_path = None  # Initialize for cleanup logic
     try:
-        # Create a temporary file path with correct extension
-        file_ext = os.path.splitext(image_path.lower())[1]
-        temp_file = os.path.splitext(image_path)[0] + "_clean" + file_ext
-        
-        # Read and write the image to clean metadata
+        # Create a temporary file path with the original extension
+        base, file_ext = os.path.splitext(image_path)
+        # Ensure the temporary filename is distinct before overwriting
+        temp_file_path = base + "_cleaning_temp" + file_ext
+
         img = cv2.imread(image_path)
         if img is None:
             print(f"      Warning: Could not read image to clean metadata: {image_path}")
             return False
-            
-        # Save with appropriate parameters based on file type
-        if file_ext in ['.tif', '.tiff']:
-            # For TIFF files
-            success = cv2.imwrite(temp_file, img, [cv2.IMWRITE_TIFF_COMPRESSION, 1])
-        elif file_ext in ['.jpg', '.jpeg']:
-            # For JPEG files
-            success = cv2.imwrite(temp_file, img, [cv2.IMWRITE_JPEG_QUALITY, 95])
-        else:
-            # For other file types
-            success = cv2.imwrite(temp_file, img)
         
-        if success and os.path.exists(temp_file):
-            # Replace original with cleaned version
-            os.remove(image_path)
-            os.rename(temp_file, image_path)
-            print(f"      Successfully cleaned image metadata.")
-            return True
+        write_success = False
+        # Save with appropriate parameters based on file type, using the original extension for the temp file
+        if file_ext.lower() in ['.tif', '.tiff']:
+            write_success = cv2.imwrite(temp_file_path, img, [cv2.IMWRITE_TIFF_COMPRESSION, 1])
+        elif file_ext.lower() in ['.jpg', '.jpeg']:
+            # This branch may not be hit if clean_image_metadata is only called for TIFFs
+            # from apply_all_metadata, but included for generality.
+            write_success = cv2.imwrite(temp_file_path, img, [cv2.IMWRITE_JPEG_QUALITY, 95])
         else:
-            print(f"      Failed to write cleaned image to {temp_file}")
-            # Try alternative approach with modern pyexiv2 if available
-            if pyexiv2 and hasattr(pyexiv2, 'Image'):
+            # This case implies an unsupported file type for this cleaning function's specific parameters.
+            # OpenCV's imwrite might still fail if it doesn't support writing this extension.
+            print(f"      Warning: Attempting to clean metadata for an extension '{file_ext}' by simple re-save. OpenCV might not support writing this format.")
+            write_success = cv2.imwrite(temp_file_path, img)
+            
+        if not write_success:
+            print(f"      Warning: cv2.imwrite failed for temporary file: {temp_file_path}")
+            if os.path.exists(temp_file_path): # Attempt to remove if partially created
                 try:
-                    print(f"      Trying pyexiv2 to clear metadata...")
-                    img = pyexiv2.Image(image_path)
-                    img.clear_exif()
-                    img.clear_xmp()
-                    img.clear_iptc()
-                    img.close()
-                    print(f"      Successfully cleared metadata with pyexiv2.")
-                    return True
-                except Exception as pyexiv_err:
-                    print(f"      Failed to clear metadata with pyexiv2: {pyexiv_err}")
-        
-        return False
-    except Exception as clean_err:
-        print(f"      Warning: Failed to clean image metadata: {clean_err}")
-        # If temp file exists but something failed, try to clean up
-        try:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-        except:
-            pass
+                    os.remove(temp_file_path)
+                except Exception as e_rem:
+                    print(f"        Could not remove partially written temp file {temp_file_path}: {e_rem}")
+            return False
             
-        # Try alternative approach with modern pyexiv2 if available
-        if pyexiv2 and hasattr(pyexiv2, 'Image'):
-            try:
-                print(f"      Trying pyexiv2 to clear metadata...")
-                img = pyexiv2.Image(image_path)
-                img.clear_exif()
-                img.clear_xmp()
-                img.clear_iptc()
-                img.close()
-                print(f"      Successfully cleared metadata with pyexiv2.")
-                return True
-            except Exception as pyexiv_err:
-                print(f"      Failed to clear metadata with pyexiv2: {pyexiv_err}")
-                
-        return False
+        # If imwrite was successful, the temporary file should exist.
+        # Replace original with cleaned version
+        os.remove(image_path)
+        os.rename(temp_file_path, image_path)
+        print(f"      Successfully cleaned image metadata for {os.path.basename(image_path)}.")
+        return True
 
-def apply_metadata_with_pyexiv2(
-    image_path, 
-    image_title, 
-    photographer_name, 
-    institution_name,
-    credit_line_text, 
-    copyright_text, 
-    usage_terms_text=None, 
-    image_dpi=600
-):
-    """
-    Apply metadata using pyexiv2 with special handling for TIFF and JPEG files.
-    Using the modern pyexiv2 API with Image class.
-    """
-    try:
-        print(f"      Using {exiv2_module_name} for metadata...")
-        
-        # Special handling for TIFF files - we'll use a different approach
-        file_ext = os.path.splitext(image_path.lower())[1]
-        is_tiff = file_ext in ('.tif', '.tiff')
-        
-        # Make a backup copy just in case
-        backup_path = None
-        try:
-            backup_path = image_path + ".backup"
-            shutil.copy2(image_path, backup_path)
-        except Exception as backup_err:
-            print(f"      Warning: Could not create backup: {backup_err}")
-            backup_path = None
-            
-        # For TIFF files, use a clean-and-rebuild approach
-        if is_tiff:
-            # First clean the file to remove any problematic metadata
-            clean_image_metadata(image_path)
-            
-        # Modern pyexiv2 API uses the Image class
-        if hasattr(pyexiv2, 'Image'):
-            # Use modern pyexiv2 API
+    except Exception as clean_err:
+        print(f"      Warning: Failed to clean image metadata for {os.path.basename(image_path)}: {clean_err}")
+        # If temp file path was defined and exists, try to clean it up
+        if temp_file_path and os.path.exists(temp_file_path):
             try:
-                print("      Using pyexiv2.Image API")
-                img = pyexiv2.Image(image_path)
-                
-                # Prepare EXIF data dictionary
-                exif_data = {
-                    'Exif.Image.Artist': f"{photographer_name} ({institution_name})",
-                    'Exif.Image.Copyright': copyright_text,
-                    'Exif.Image.ImageDescription': image_title,
-                    'Exif.Image.Software': "eBL Photo Stitcher",
-                    'Exif.Image.XResolution': (image_dpi, 1),
-                    'Exif.Image.YResolution': (image_dpi, 1),
-                    'Exif.Image.ResolutionUnit': 2  # Inches
-                }
-                
-                # Prepare XMP data dictionary
-                xmp_data = {
-                    'Xmp.dc.title': image_title,
-                    'Xmp.dc.creator': photographer_name,
-                    'Xmp.dc.rights': copyright_text,
-                    'Xmp.dc.description': image_title,
-                    'Xmp.photoshop.Credit': credit_line_text,
-                    'Xmp.photoshop.Source': institution_name,
-                    'Xmp.xmpRights.Marked': "True"
-                }
-                
-                if usage_terms_text:
-                    xmp_data['Xmp.xmpRights.UsageTerms'] = usage_terms_text
-                
-                xmp_data['Xmp.xmp.MetadataDate'] = datetime.datetime.now().isoformat()
-                
-                # First clear existing metadata
-                try:
-                    img.clear_exif()
-                    img.clear_xmp()
-                    img.clear_iptc()
-                except Exception as clear_err:
-                    print(f"      Warning: Could not clear existing metadata: {clear_err}")
-                
-                # Set new metadata
-                img.modify_exif(exif_data)
-                img.modify_xmp(xmp_data)
-                
-                # Save changes
-                img.close()
-                print(f"      Successfully applied metadata via {exiv2_module_name} Image API.")
-                
-                # If we successfully wrote metadata, remove the backup
-                if backup_path and os.path.exists(backup_path):
-                    try:
-                        os.remove(backup_path)
-                    except:
-                        pass
-                        
-                return True
-                
-            except Exception as img_err:
-                print(f"      Error using Image API: {img_err}")
-                # Continue to fallback approach
-                pass
-        
-        # If we got here, we couldn't use the modern API or it failed
-        print("      WARNING: Modern pyexiv2.Image API not available. Falling back to piexif.")
-        
-        # If we had a backup and the operation failed, restore it
-        if backup_path and os.path.exists(backup_path):
-            try:
-                print("      Restoring backup...")
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-                shutil.copy2(backup_path, image_path)
-                os.remove(backup_path)
-            except Exception as restore_err:
-                print(f"      Error restoring backup: {restore_err}")
-        
-        # Fall back to piexif for basic EXIF
-        return set_basic_exif_metadata(
-            image_path, image_title, photographer_name, 
-            institution_name, copyright_text, image_dpi
-        )
-    except Exception as e:
-        print(f"      Error applying metadata with {exiv2_module_name}: {e}")
-        
-        # If we had a backup, restore it
-        if backup_path and os.path.exists(backup_path):
-            try:
-                print("      Restoring backup due to error...")
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-                shutil.copy2(backup_path, image_path)
-                os.remove(backup_path)
-            except:
-                pass
-                
-        # Fall back to piexif
-        return set_basic_exif_metadata(
-            image_path, image_title, photographer_name, 
-            institution_name, copyright_text, image_dpi
-        )
+                os.remove(temp_file_path)
+            except Exception as e_rem_err:
+                 print(f"        Could not remove temp file {temp_file_path} during error cleanup: {e_rem_err}")
+        return False
 
 def apply_all_metadata(
     image_path, 
@@ -359,23 +196,135 @@ def apply_all_metadata(
     
     # If exiv2 module is available, use it for comprehensive metadata handling
     if pyexiv2:
-        # Try applying metadata with pyexiv2 first
-        success = apply_metadata_with_pyexiv2(
-            image_path, image_title, photographer_name, institution_name,
-            credit_line_text, copyright_text, usage_terms_text, image_dpi
-        )
-        
-        if success:
+        img = None # Initialize img to None for the finally block
+        backup_path = None # Initialize backup_path for the finally block
+        try:
+            print(f"      Using {exiv2_module_name} for advanced metadata...")
+            
+            # Make a backup copy just in case
+            try:
+                backup_path = image_path + ".backup"
+                shutil.copy2(image_path, backup_path)
+            except Exception as e_backup:
+                print(f"      Warning: Could not create backup for {image_path}: {e_backup}")
+                backup_path = None # Ensure backup_path is None if creation failed
+                
+            # Open the image
+            img = pyexiv2.Image(image_path) # Correct API for pyexiv2
+            existing_exif = img.read_exif()
+            existing_xmp = img.read_xmp()
+            
+            # Prepare new metadata dictionaries
+            new_exif_data = {}
+            new_xmp_data = {}
+            
+            # Set EXIF metadata
+            new_exif_data['Exif.Image.Artist'] = f"{photographer_name} ({institution_name})"
+            new_exif_data['Exif.Image.Copyright'] = copyright_text
+            new_exif_data['Exif.Image.ImageDescription'] = image_title
+            new_exif_data['Exif.Image.Software'] = "eBL Photo Stitcher"
+            
+            # pyexiv2 expects resolution as string "value/1"
+            new_exif_data['Exif.Image.XResolution'] = f"{image_dpi}/1"
+            new_exif_data['Exif.Image.YResolution'] = f"{image_dpi}/1"
+            new_exif_data['Exif.Image.ResolutionUnit'] = '2'  # Inches, pyexiv2 expects string for some numeric tags
+            
+            # Set XMP metadata (Dublin Core)
+            new_xmp_data['Xmp.dc.title'] = [{'lang': 'x-default', 'value': image_title}] # XMP often needs lang qualifier
+            new_xmp_data['Xmp.dc.creator'] = [photographer_name]
+            new_xmp_data['Xmp.dc.rights'] = [{'lang': 'x-default', 'value': copyright_text}]
+            new_xmp_data['Xmp.dc.description'] = [{'lang': 'x-default', 'value': image_title}]
+            
+            # Set subjects/keywords
+            new_xmp_data['Xmp.dc.subject'] = copyright_text
+            
+            # Set XMP metadata (Photoshop)
+            new_xmp_data['Xmp.photoshop.Credit'] = credit_line_text
+            new_xmp_data['Xmp.photoshop.Source'] = institution_name
+            
+            # Set XMP Rights Management metadata
+            new_xmp_data['Xmp.xmpRights.Marked'] = 'True' # pyexiv2 often expects string booleans
+            if usage_terms_text:
+                new_xmp_data['Xmp.xmpRights.UsageTerms'] = [{'lang': 'x-default', 'value': usage_terms_text}]
+            
+            # Add additional metadata
+            new_xmp_data['Xmp.xmp.MetadataDate'] = datetime.datetime.now().isoformat()
+            
+            # Write changes to file
+            img.modify_exif(new_exif_data)
+            img.modify_xmp(new_xmp_data)
+            # IPTC data can be modified similarly if needed: img.modify_iptc(new_iptc_data)
+            
+            # Explicitly close the image to ensure file handles are released
+            # This is done before removing the backup, in the main try block
+            img.close()
+            img = None # Set to None after successful close
+
+            print(f"      All metadata (EXIF, XMP) applied successfully via {exiv2_module_name}.")
+            
+            # If we successfully wrote metadata and closed the image, remove the backup
+            if backup_path and os.path.exists(backup_path):
+                try:
+                    os.remove(backup_path)
+                except Exception as e_rem_backup:
+                    print(f"      Warning: Could not remove backup file {backup_path}: {e_rem_backup}")
+                    
             return True
-        
-        # If pyexiv2 failed, fall back to piexif
-        print("      Falling back to piexif for basic EXIF...")
-        return set_basic_exif_metadata(
-            image_path, image_title, photographer_name, 
-            institution_name, copyright_text, image_dpi
-        )
+            
+        except Exception as e:
+            print(f"      Error applying metadata with {exiv2_module_name}: {e}")
+            
+            # If we had a backup and the operation failed, restore it
+            if backup_path and os.path.exists(backup_path):
+                try:
+                    print("      Restoring backup due to metadata error...")
+                    # Ensure img is closed before attempting to replace the file, if it was opened
+                    if img is not None:
+                        img.close()
+                        img = None
+
+                    if os.path.exists(image_path):
+                        os.remove(image_path)
+                    shutil.copy2(backup_path, image_path)
+                    os.remove(backup_path)
+                except Exception as e_restore:
+                    print(f"      Error restoring backup for {image_path}: {e_restore}")
+            
+            # Fall back to piexif for basic EXIF
+            print("      Falling back to piexif for basic EXIF...")
+            return set_basic_exif_metadata(
+                image_path, image_title, photographer_name, 
+                institution_name, copyright_text, image_dpi
+            )
+        finally:
+            # Ensure the image object is closed if it was opened and an unexpected error occurred
+            # before the explicit close() in the try block, or if an error happened during backup removal.
+            if img is not None:
+                try:
+                    img.close()
+                except Exception as e_close_final:
+                    print(f"      Warning: Error closing pyexiv2.Image in finally block: {e_close_final}")
+            # Clean up backup file if it still exists and something went wrong before normal removal
+            # This case is mostly for unexpected errors not covered by the main try/except for restoration.
+            if backup_path and os.path.exists(backup_path) and not os.path.exists(image_path): # Original was deleted but not restored
+                 try:
+                    print(f"      Final cleanup: Restoring backup {backup_path} as original is missing.")
+                    shutil.copy2(backup_path, image_path)
+                    os.remove(backup_path)
+                 except Exception as e_final_restore:
+                    print(f"      Error in final backup restoration: {e_final_restore}")
+            elif backup_path and os.path.exists(backup_path) and os.path.exists(image_path):
+                 # If both exist, it implies the main logic for backup removal or restoration should have handled it.
+                 # However, if an error occurred after successful metadata write but before backup removal, remove backup here.
+                 # This is a bit of a safety net.
+                 print(f"      Final cleanup: Removing lingering backup file {backup_path}.")
+                 try:
+                    os.remove(backup_path)
+                 except Exception as e_final_remove_backup:
+                    print(f"      Error in final backup removal: {e_final_remove_backup}")
+
     else:
-        # Fall back to piexif for basic EXIF if pyexiv2 is not available
+        # Fall back to piexif for basic EXIF
         print("      No advanced metadata modules available, using piexif for basic EXIF.")
         return set_basic_exif_metadata(
             image_path, image_title, photographer_name, 

@@ -22,10 +22,11 @@ except ImportError:
 
 DEFAULT_OUTPUT_CANVAS_BACKGROUND_BGR = (0, 0, 0)
 DEFAULT_SOURCE_IMAGE_BACKGROUND_BGR_TO_REMOVE = (0, 0, 0)
-DEFAULT_EDGE_FEATHER_RADIUS_PIXELS = 5
+DEFAULT_EDGE_FEATHER_RADIUS_PIXELS = 10
 DEFAULT_EXTRACTED_OBJECT_FILENAME_SUFFIX = "_object.tif"
-DEFAULT_BACKGROUND_DETECTION_COLOR_TOLERANCE = 35
+DEFAULT_BACKGROUND_DETECTION_COLOR_TOLERANCE = 30
 DEFAULT_MINIMUM_OBJECT_CONTOUR_AREA_FRACTION = 0.010
+DEFAULT_OBJECT_CONTOUR_SMOOTHING_KERNEL_SIZE = 71
 
 
 def _create_feathered_alpha_blend_mask(binary_object_isolate_mask, feather_radius_px):
@@ -65,13 +66,26 @@ def extract_specific_contour_to_image_array(
     original_image_bgr_array, 
     contour_to_be_extracted, 
     output_canvas_background_bgr_color, 
-    edge_feather_radius_px
+    edge_feather_radius_px,
+    contour_smoothing_kernel_size=3
 ):
     if contour_to_be_extracted is None or original_image_bgr_array is None:
         raise ValueError("Input image or contour cannot be None for contour extraction.")
     
     mask_for_selected_contour = np.zeros(original_image_bgr_array.shape[:2], dtype=np.uint8)
     cv2.drawContours(mask_for_selected_contour, [contour_to_be_extracted], -1, (255), thickness=cv2.FILLED)
+
+    # Apply contour smoothing if a kernel size is specified
+    if contour_smoothing_kernel_size > 0:
+        # Ensure kernel size is odd
+        kernel_val = contour_smoothing_kernel_size if contour_smoothing_kernel_size % 2 != 0 else contour_smoothing_kernel_size + 1
+        # Create an elliptical structuring element
+        morph_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_val, kernel_val))
+        
+        # Perform morphological opening (erosion followed by dilation) to remove small noise
+        opened_mask = cv2.morphologyEx(mask_for_selected_contour, cv2.MORPH_OPEN, morph_kernel)
+        # Perform morphological closing (dilation followed by erosion) to close small holes
+        mask_for_selected_contour = cv2.morphologyEx(opened_mask, cv2.MORPH_CLOSE, morph_kernel)
     
     if np.sum(mask_for_selected_contour) == 0:
         raise ValueError("Contour mask is empty after drawing. Contour might be invalid or too small.")
@@ -90,9 +104,10 @@ def extract_and_save_center_object( # Renamed from your provided file for consis
     source_background_detection_mode="auto", 
     output_image_background_color=DEFAULT_OUTPUT_CANVAS_BACKGROUND_BGR,
     feather_radius_px=DEFAULT_EDGE_FEATHER_RADIUS_PIXELS,
-    output_filename_suffix=DEFAULT_EXTRACTED_OBJECT_FILENAME_SUFFIX, # Parameter name used by gui_workflow_runner
+    output_filename_suffix=DEFAULT_EXTRACTED_OBJECT_FILENAME_SUFFIX,
     background_color_tolerance_value=DEFAULT_BACKGROUND_DETECTION_COLOR_TOLERANCE,
     min_object_area_as_image_fraction=DEFAULT_MINIMUM_OBJECT_CONTOUR_AREA_FRACTION,
+    object_contour_smoothing_kernel_size=DEFAULT_OBJECT_CONTOUR_SMOOTHING_KERNEL_SIZE,
     museum_selection=None
 ):
     print(f"  Extracting central object from: {os.path.basename(input_image_filepath)}")
@@ -122,11 +137,12 @@ def extract_and_save_center_object( # Renamed from your provided file for consis
     
     extracted_artifact_image_array = extract_specific_contour_to_image_array(
         original_image_bgr_array, center_artifact_main_contour, 
-        output_image_background_color, feather_radius_px
+        output_image_background_color, feather_radius_px,
+        contour_smoothing_kernel_size=object_contour_smoothing_kernel_size
     )
     
     base_filepath, _ = os.path.splitext(input_image_filepath)
-    output_image_filepath = f"{base_filepath}{output_filename_suffix}" # Use the parameter name
+    output_image_filepath = f"{base_filepath}{output_filename_suffix}"
     try:
         if not cv2.imwrite(output_image_filepath, extracted_artifact_image_array): 
             raise IOError("cv2.imwrite failed to save extracted artifact.")
@@ -134,25 +150,3 @@ def extract_and_save_center_object( # Renamed from your provided file for consis
         return output_image_filepath, center_artifact_main_contour 
     except Exception as e: 
         raise IOError(f"Error saving extracted artifact to {output_image_filepath}: {e}")
-
-# --- Standalone Test ---
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage for direct testing: python object_extractor.py <path_to_image> [bg_mode: auto/black/white]")
-        sys.exit(1)
-    test_image_path = sys.argv[1]
-    test_mode = "auto"
-    if len(sys.argv) > 2 and sys.argv[2].lower() in ["auto", "black", "white"]:
-        test_mode = sys.argv[2].lower()
-
-    if not os.path.exists(test_image_path):
-         print(f"Error: Test image not found at {test_image_path}")
-         sys.exit(1)
-
-    print(f"--- Running Object Extractor Standalone Test on {test_image_path} with mode '{test_mode}' ---")
-    try:
-        saved_path, _ = extract_and_save_center_object(test_image_path, source_background_detection_mode=test_mode)
-        print(f"--- Central object saved to {saved_path} ---")
-    except Exception as e:
-        print(f"--- Standalone Test Failed: {e} ---")
-        sys.exit(1)

@@ -19,24 +19,27 @@ def apply_lens_correction_if_available(raw_image_obj, image_rgb_array):
     try:
         database = lensfunpy.Database()
         
-        # Get camera make and model from metadata
-        cam_manufacturer = raw_image_obj.metadata.get('make', '')
-        cam_model_name = raw_image_obj.metadata.get('model', '')
+        # Get camera make and model directly from rawpy object attributes
+        cam_manufacturer = getattr(raw_image_obj, 'camera_manufacturer', getattr(raw_image_obj, 'make', ''))
+        cam_model_name = getattr(raw_image_obj, 'camera_model', getattr(raw_image_obj, 'model', ''))
         
         # Get lens information
-        lens_model_name = raw_image_obj.metadata.get('lens', '')
-    
-        # Check for lens information, which can be in various places or not present
-        if hasattr(raw_image_obj, 'lens') and raw_image_obj.lens:
-            if hasattr(raw_image_obj.lens, 'name') and raw_image_obj.lens.name:
-                lens_model_name = raw_image_obj.lens.name
-            elif hasattr(raw_image_obj.lens, 'model') and raw_image_obj.lens.model: # Fallback
-                lens_model_name = raw_image_obj.lens.model
-        
-        # Fallback if lens object itself is missing but make/model might be there
-        if not lens_model_name and hasattr(raw_image_obj, 'lens_make') and hasattr(raw_image_obj, 'lens_model'):
-             lens_model_name = f"{raw_image_obj.lens_make} {raw_image_obj.lens_model}".strip()
+        lens_model_name = ''  # Initialize
 
+        # Attempt 1: from specific lens_make and lens_model attributes on raw_image_obj
+        _lens_make_attr = getattr(raw_image_obj, 'lens_make', '')
+        _lens_model_attr = getattr(raw_image_obj, 'lens_model', '')
+        if _lens_make_attr or _lens_model_attr:
+            lens_model_name = f"{_lens_make_attr} {_lens_model_attr}".strip()
+
+        # Attempt 2: from raw_image_obj.lens object (if Attempt 1 failed or produced an empty string)
+        # This part of the logic was mostly fine but is now a fallback.
+        if not lens_model_name and hasattr(raw_image_obj, 'lens') and raw_image_obj.lens:
+            lens_obj = raw_image_obj.lens
+            if hasattr(lens_obj, 'name') and lens_obj.name:
+                lens_model_name = lens_obj.name
+            elif hasattr(lens_obj, 'model') and lens_obj.model:  # Fallback within lens object
+                lens_model_name = lens_obj.model
 
         if not cam_manufacturer or not cam_model_name:
             print("      Lensfun: Camera maker or model not found in RAW metadata. Skipping correction.")
@@ -147,4 +150,3 @@ def convert_raw_image_to_tiff(raw_image_input_path, tiff_output_path):
     except Exception as e:
         print(f"  ERROR during RAW to TIFF conversion for {raw_image_input_path}: {e}")
         raise
-    

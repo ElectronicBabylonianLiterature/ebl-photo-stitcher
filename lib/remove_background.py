@@ -2,30 +2,72 @@ import cv2
 import numpy as np
 import math
 
-def detect_dominant_corner_background_color(image_bgr_array, corner_fraction=0.1, brightness_threshold=127, museum_selection=None):
-    # Always detect the actual background color for proper background removal
-    # This function is used both for detecting what to remove AND for setting the output background
+import cv2
+import numpy as np
+
+def detect_dominant_corner_background_color(image_bgr_array, corner_fraction=0.7, brightness_threshold=127, museum_selection=None):
+    # This function should now return the actual average BGR color of the corners.
+    # The brightness_threshold parameter might become less relevant for determining the *color*,
+    # but could still be used for a logic like "if it's very dark, treat it as black background, otherwise compute average color".
+    # For now, let's just compute the average color.
+
     img_height, img_width = image_bgr_array.shape[:2]
     sample_size = int(min(img_height, img_width) * corner_fraction)
-    
+
     corner_sections_list = [
         image_bgr_array[0:sample_size, 0:sample_size],
         image_bgr_array[0:sample_size, img_width - sample_size:img_width],
         image_bgr_array[img_height - sample_size:img_height, 0:sample_size],
         image_bgr_array[img_height - sample_size:img_height, img_width - sample_size:img_width]
     ]
-    
-    brightness_values = []
+
+    all_corner_pixels = []
     for section in corner_sections_list:
         if section.size > 0:
-            gray_section = cv2.cvtColor(section, cv2.COLOR_BGR2GRAY)
-            brightness_values.append(np.mean(gray_section))
-            
-    if not brightness_values: return (0, 0, 0) 
-    
-    average_overall_brightness = np.mean(brightness_values)
-    return (255, 255, 255) if average_overall_brightness > brightness_threshold else (0, 0, 0)
+            # Reshape to a list of pixels (each pixel is a BGR tuple)
+            reshaped_section = section.reshape(-1, 3)
+            all_corner_pixels.extend(reshaped_section)
 
+    if not all_corner_pixels:
+        return (0, 0, 0) # Fallback if no valid corner sections
+
+    # Convert to a NumPy array for easier averaging
+    all_corner_pixels_np = np.array(all_corner_pixels)
+
+    # Calculate the mean BGR values across all sampled corner pixels
+    average_bgr_color = np.mean(all_corner_pixels_np, axis=0).astype(int)
+
+    # Ensure the values are within the 0-255 range
+    average_bgr_color_tuple = tuple(np.clip(average_bgr_color, 0, 255))
+
+    return average_bgr_color_tuple
+
+# The get_museum_background_color function would also need to be adjusted
+# to respect the detected_bg_color more often, or have its own logic for output background.
+# For now, if you want the output to be the detected background, you'd ensure
+# that get_museum_background_color actually uses detected_bg_color for all cases
+# or for a specific "original background" setting.
+# For example, if you wanted the *output* background to always be white unless
+# it's the British Museum and the detected background was dark:
+
+def get_museum_background_color(museum_selection=None, detected_bg_color=(0, 0, 0)):
+    # This function determines the FINAL background color for the output image.
+    # It can be different from the *detected* background color used for removal.
+
+    # If the detected background is dark, and it's British Museum or no museum specified,
+    # we might want to keep it dark.
+    if museum_selection is None or museum_selection == "British Museum":
+        # Check if the detected color is 'dark' (e.g., average brightness less than 100)
+        # Convert detected_bg_color to grayscale to check brightness
+        # Note: A simple average of BGR is a rough brightness estimate
+        if np.mean(detected_bg_color) < 100: # Example threshold for "dark"
+            return detected_bg_color
+        else:
+            return (255, 255, 255) # Otherwise, make it white for British Museum / None if it's not dark
+    else:
+        # For all other museums, force white output background
+        return (255, 255, 255)
+    
 def create_foreground_mask_from_background( # THIS IS THE CORRECT FUNCTION NAME
     image_bgr_array, background_bgr_color_tuple, color_similarity_tolerance
 ):
@@ -68,26 +110,6 @@ def select_contour_closest_to_image_center(
         if current_distance < shortest_distance:
             shortest_distance, best_contour = current_distance, contour_candidate
     return best_contour
-
-def get_museum_background_color(museum_selection=None, detected_bg_color=(0, 0, 0)):
-    """
-    Returns the appropriate background color for the output image based on museum selection.
-    For British Museum, the detected background color is used.
-    For all other museums, white is used.
-    
-    Args:
-        museum_selection: The museum selection string (e.g., "British Museum", "Iraq Museum", etc.)
-        detected_bg_color: The background color detected from the image
-        
-    Returns:
-        A tuple of BGR color values for the background
-    """
-    # For non-British Museum selections, always use white background
-    if museum_selection is not None and museum_selection != "British Museum":
-        return (255, 255, 255)
-        
-    # For British Museum or when museum_selection is None, use the detected background color
-    return detected_bg_color
 
 def select_ruler_like_contour_from_list(
     list_of_all_contours, image_pixel_width, image_pixel_height, 
