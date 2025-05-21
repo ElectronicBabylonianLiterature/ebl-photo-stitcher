@@ -57,7 +57,8 @@ def run_complete_image_processing_workflow(
     progress_callback,
     finished_callback,
     museum_selection="British Museum",
-    app_root_window=None 
+    app_root_window=None,
+    app_instance=None  # Add this parameter to access the processing_running flag
 ):
     from lib.complex_layout_main import ComplexLayoutDialog
 
@@ -91,7 +92,14 @@ def run_complete_image_processing_workflow(
     total_ok, total_err, cr2_conv_total = 0, 0, 0
     prog_per_folder = 85.0 / num_folders if num_folders > 0 else 0
 
+    # The main loop for subfolders - add check after each subfolder
     for i, subfolder_path_item in enumerate(processed_subfolders):
+        # Check if processing should stop
+        if app_instance and not app_instance.processing_running:
+            print("Processing stopped by user.")
+            finished_callback()
+            return
+            
         subfolder_name_item = os.path.basename(subfolder_path_item)
         print(
             f"Processing Subfolder {i+1}/{num_folders}: {subfolder_name_item}")
@@ -126,15 +134,27 @@ def run_complete_image_processing_workflow(
                             pass 
             
             if root_tk_window:
-                dialog = ComplexLayoutDialog(parent=root_tk_window, image_paths=image_files_for_layout)
-                custom_layout_config = dialog.get_layout_config()
-                if custom_layout_config:
-                    print(f"   Custom layout defined for {subfolder_name_item}: {custom_layout_config}")
-                else:
-                    print(f"   Custom layout cancelled for {subfolder_name_item}.")
-            else:
-                print("   WARNING: Could not get root Tk window for ComplexLayoutDialog. Skipping custom layout.")
-        
+                try:
+                    # Properly create and wait for the dialog
+                    dialog = ComplexLayoutDialog(parent=root_tk_window, image_paths=image_files_for_layout)
+                    
+                    # Use grab_set to make the dialog modal
+                    dialog.grab_set()
+                    
+                    # Wait for the dialog to be complete
+                    root_tk_window.wait_variable(dialog.result_ready_var)
+                    
+                    # Get the result
+                    custom_layout_config = dialog.get_layout_config()
+                    
+                    if custom_layout_config:
+                        print(f"   Custom layout defined for {subfolder_name_item}")
+                    else:
+                        print(f"   Custom layout cancelled for {subfolder_name_item}.")
+                except Exception as e:
+                    print(f"   Error showing complex layout dialog: {e}")
+                    custom_layout_config = None
+                    
         accumulated_sub_progress += sub_steps_alloc["layout_dialog"] * prog_per_folder
         progress_callback(current_prog_base + accumulated_sub_progress)
 

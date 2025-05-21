@@ -10,33 +10,42 @@ from lib.complex_layout_layout_drawing import create_layout_visualization, add_l
 from lib.complex_layout_dialog_logic import get_default_layout_structure, load_current_layout_into_ui, on_ok, on_cancel
 from lib.complex_layout_sequence_manager import show_sequence_dialog, add_selected_to_sequence, remove_from_sequence, move_sequence_item, update_sequence_indicator
 from lib.complex_layout_undo_manager import record_action, undo_last_action
+from lib.complex_layout_standard_sequences import apply_standard_sequence
 
 
 class ComplexLayoutDialog(tk.Toplevel):
-    def __init__(self, parent, image_paths, current_layout=None, thumbnail_size=(200,200)): # Doubled thumbnail size
+    def __init__(self, parent, image_paths, current_layout=None, thumbnail_size=(200,200)):
         super().__init__(parent)
         self.transient(parent)
         self.title("Define Complex Photo Layout")
         self.parent_app = parent
         self.image_paths = image_paths
         
+        # Add a variable to track dialog completion
+        self.result_ready_var = tk.BooleanVar(value=False)
+        
         # Initialize result_layout with default or provided structure
-        # Ensure that if current_layout has images, their rotation is tracked
         self.result_layout = get_default_layout_structure()
-        self.image_rotations = {path: 0 for path in image_paths} # Store rotation for each image
+        self.image_rotations = {path: 0 for path in self.image_paths} # Rotation is kept at 0 for all images
 
-        if current_layout:
+        # Apply standard sequence based on number of photos
+        num_photos = len(image_paths)
+        if num_photos in [4, 7, 8, 9] or num_photos > 9:
+            # Use our standard sequence logic
+            self.result_layout = apply_standard_sequence(self.image_paths, num_photos)
+            
+        elif current_layout:
+            # Only use current_layout if no standard sequence was applied
             # Deep copy current_layout to avoid modifying the original dict directly
-            # and to handle paths with rotations correctly.
             for key, value in current_layout.items():
                 if isinstance(value, dict) and "path" in value: # Main slots
                     self.result_layout[key] = value.copy()
-                    self.image_rotations[value["path"]] = value.get("rotation", 0)
+                    self.image_rotations[value["path"]] = 0  # Force rotation to 0
                 elif isinstance(value, list): # Sequence slots
                     self.result_layout[key] = [item.copy() if isinstance(item, dict) else {"path": item, "rotation": 0} for item in value]
                     for item in value:
                         if isinstance(item, dict) and "path" in item:
-                            self.image_rotations[item["path"]] = item.get("rotation", 0)
+                            self.image_rotations[item["path"]] = 0  # Force rotation to 0
                         else: # Handle old format where sequence items were just paths
                              self.image_rotations[item] = 0
 
@@ -44,12 +53,11 @@ class ComplexLayoutDialog(tk.Toplevel):
         self.pil_images_cache = {}
         self.tk_thumbnails_cache = {}
         self.layout_rectangles = {} # Initialize layout_rectangles here
-          # Bind extracted functions as methods
+        
+        # Bind extracted functions as methods - remove rotate_image binding
         self._prepare_thumbnails = prepare_thumbnails.__get__(self)
         self._get_tk_thumbnail = get_tk_thumbnail.__get__(self)
-        self._rotate_image = rotate_image.__get__(self)
-        self._add_rotate_overlay = add_rotate_overlay.__get__(self)
-
+        
         self._create_layout_visualization = create_layout_visualization.__get__(self)
         self._add_labeled_rectangle = add_labeled_rectangle.__get__(self)
         self._display_image_in_rectangle = display_image_in_rectangle.__get__(self)
@@ -64,13 +72,16 @@ class ComplexLayoutDialog(tk.Toplevel):
         self._remove_from_sequence = remove_from_sequence.__get__(self)
         self._move_sequence_item = move_sequence_item.__get__(self)
         self._update_sequence_indicator = update_sequence_indicator.__get__(self)
-
+        
         self._record_action = record_action.__get__(self)
         self._undo_last_action = undo_last_action.__get__(self)
-
-
-        self._prepare_thumbnails()
+        
+        self.undo_stack = []
+        self.available_labels = {}
+        self.selected_image_path = None
+        
         self._setup_ui()
+        self._load_current_layout_into_ui()
 
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.grab_set()
@@ -116,7 +127,7 @@ class ComplexLayoutDialog(tk.Toplevel):
             frame = ttk.Frame(self.scrollable_frame_available, relief=tk.RAISED, borderwidth=1)
             frame.pack(pady=3, padx=3, fill=tk.X)
 
-            tk_thumb = self._get_tk_thumbnail(img_path, add_rotate_icon=True)
+            tk_thumb = self._get_tk_thumbnail(img_path, add_rotate_icon=False)  # No rotation icon
             if tk_thumb:
                 img_container = ttk.Frame(frame)
                 img_container.pack(side=tk.LEFT, padx=2, pady=2)
@@ -127,14 +138,13 @@ class ComplexLayoutDialog(tk.Toplevel):
                 # Bind regular click for selection
                 img_label.bind("<Button-1>", lambda e, p=img_path: self._on_thumbnail_click(p))
                 
-                # Bind right-click for rotation on the image itself
-                img_label.bind("<Button-3>", lambda e, p=img_path: self._rotate_image(p))
+                # Remove right-click binding for rotation
                 
-                # Bind additional click handler for the top-right corner of the image
-                img_label.bind("<Button-1>", lambda e, p=img_path: self._handle_image_click(e, p), add="+")
+                # Add filename label
+                filename_label = ttk.Label(frame, text=os.path.basename(img_path)[:25])
+                filename_label.pack(side=tk.LEFT, padx=5)
                 
-                img_label.image_path = img_path # Store path for easy access
-                self.available_labels[img_path] = img_label # Store the label widget
+                self.available_labels[img_path] = filename_label
             else:
                 error_label = ttk.Label(frame, text=f"Error loading {os.path.basename(img_path)}", 
                                         foreground="red", background="lightgrey")
@@ -244,14 +254,10 @@ class ComplexLayoutDialog(tk.Toplevel):
             self._assign_image_to_slot(slot_name, self.selected_image_path)
             self._on_thumbnail_click(None) # Deselect the image after assignment
         elif rect_data["current_image"]:
-            # If slot has an image and no image is selected, ask to remove
-            confirmed = messagebox.askyesno(
-                "Remove Image", 
-                f"Remove image from {slot_name.capitalize()}?",
-                parent=self
-            )
-            if confirmed:
-                self._unassign_image_from_slot(slot_name)
+            # If slot has an image and no image is selected, unassign it automatically
+            # Remove the confirmation dialog since the interaction is now more intuitive
+            self._unassign_image_from_slot(slot_name)
+            self.status_bar.config(text=f"Removed image from {slot_name.capitalize()}. Select from left panel to reassign.")
 
     def _assign_image_to_slot(self, slot_name, img_path):
         """Assign an image to a main slot."""
@@ -259,8 +265,8 @@ class ComplexLayoutDialog(tk.Toplevel):
         for s_name, rect_data in self.layout_rectangles.items():
             if not rect_data["is_sequence"] and rect_data["current_image"] == img_path and s_name != slot_name:
                 messagebox.showwarning("Image In Use", 
-                                       f"Image is already assigned to '{s_name.capitalize()}'. Unassign it first.", 
-                                       parent=self)
+                                    f"Image is already assigned to '{s_name.capitalize()}'. Unassign it first.", 
+                                    parent=self)
                 return
         
         # Record previous state for undo
@@ -292,9 +298,8 @@ class ComplexLayoutDialog(tk.Toplevel):
         rect_data = self.layout_rectangles[slot_name]
         current_img_path = rect_data["current_image"]
         if current_img_path:
-            # Make the current image available again
-            if current_img_path in self.available_labels:
-                self.available_labels[current_img_path].master.pack(pady=3, padx=3, fill=tk.X)
+            # Unassign the current image (make it available again in the left panel)
+            self._make_image_available_in_leftpanel(current_img_path)
             
             # Remove the current image from canvas
             if rect_data["image_id"]:
@@ -303,144 +308,22 @@ class ComplexLayoutDialog(tk.Toplevel):
         
         # Assign new image
         self.layout_rectangles[slot_name]["current_image"] = img_path
-        self.result_layout[slot_name] = {"path": img_path, "rotation": self.image_rotations.get(img_path, 0)}        # Display the image in the rectangle
+        self.result_layout[slot_name] = {"path": img_path, "rotation": self.image_rotations.get(img_path, 0)}
+        
+        # Display the image in the rectangle
         self._display_image_in_rectangle(slot_name, img_path)
-          # Hide the image from available list when assigned to any view
-        if img_path in self.available_labels:
-            # Get the frame that contains the image (this is what we want to hide)
-            label = self.available_labels[img_path]
-            inner_frame = label.master  # This is the immediate container
-            outer_frame = inner_frame.master  # This is the outer frame we need to hide
-            
-            # Hide completely using pack_forget
-            outer_frame.pack_forget()
-        self.status_bar.config(text=f"Assigned {os.path.basename(img_path)} to {slot_name.capitalize()}.")
-
-    def _unassign_image_from_slot(self, slot_name):
-        """Remove an image from a slot."""
-        rect_data = self.layout_rectangles[slot_name]
-        img_path = rect_data["current_image"]
-        if not img_path:
-            return
         
-        # Get current rotation to record for undo
-        current_rotation = self.image_rotations.get(img_path, 0)
-        img_data_for_undo = {"path": img_path, "rotation": current_rotation}
+        # Hide the image from available list when assigned to any view
+        self._hide_image_from_leftpanel(img_path)
         
-        # Record action for undo
-        self._record_action("unassign", slot_name, img_data_for_undo)
-
-        # Remove image from result layout
-        self.result_layout[slot_name] = None
-        rect_data["current_image"] = None
-        
-        # Remove image from canvas
-        if rect_data["image_id"]:
-            self.layout_canvas.delete(rect_data["image_id"])
-            rect_data["image_id"] = None        # Make image available again
-        if img_path in self.available_labels:
-            # Get the frame that contains the image
-            label = self.available_labels[img_path]
-            inner_frame = label.master  # This is the immediate container
-            outer_frame = inner_frame.master  # This is the frame we need to show
-            
-            # Check if this image is used in any other slot before making it available again
-            is_used_elsewhere = False
-            for other_slot_name, other_rect_data in self.layout_rectangles.items():
-                if other_slot_name != slot_name and other_rect_data["current_image"] == img_path:
-                    is_used_elsewhere = True
-                    break
-            
-            # Also check sequence slots
-            for seq_key, seq_list in self.result_layout.items():
-                if isinstance(seq_list, list):
-                    for item in seq_list:
-                        if isinstance(item, dict) and item.get("path") == img_path:
-                            is_used_elsewhere = True
-                            break
-            
-            # Only show the frame if the image isn't used elsewhere
-            if not is_used_elsewhere:
-                # Show the frame again with proper padding
-                outer_frame.pack(pady=3, padx=3, fill=tk.X)
-        # Reset rectangle color
-        self.layout_canvas.itemconfig(rect_data["rectangle"], fill="white")
-
-        self.status_bar.config(text=f"Removed image from {slot_name.capitalize()}.")
-        
-    def _handle_image_click(self, event, img_path):
-        """
-        Handle clicks on the image, checking if the click is in the rotation overlay area
-        """
-        # Get image dimensions
-        if img_path in self.pil_images_cache:
-            img = self.pil_images_cache[img_path]
-            
-            # Calculate the position of the rotation overlay (top-right corner)
-            # Use a consistent calculation with add_rotate_overlay
-            circle_radius = max(24, min(img.width, img.height) // 8)
-            circle_x = img.width - circle_radius - 8  # 8 pixels from right edge
-            circle_y = circle_radius + 8  # 8 pixels from top edge
-
-            # Check if click is within the rotation circle using proper distance calculation
-            # Calculate squared distance from circle center to click point
-            dx = event.x - (img.width - circle_radius - 8)
-            dy = event.y - circle_radius - 8
-            distance_squared = dx*dx + dy*dy
-            
-            # If the distance is less than the radius, the click is inside the circle
-            if distance_squared <= circle_radius * circle_radius:
-                # Call the rotation function
-                self._rotate_image(img_path)
-                # Prevent further processing of the click
-                return "break"
-
-if __name__ == '__main__':
-    # Create a dummy root window
-    root = tk.Tk()
-    root.withdraw() # Hide the main window
-
-    # Create some dummy image files for testing
-    dummy_image_dir = "dummy_images"
-    os.makedirs(dummy_image_dir, exist_ok=True)
+        self.status_bar.config(text=f"Assigned {os.path.basename(img_path)} to {slot_name.capitalize}.")
     
-    dummy_image_paths = []
-    for i in range(1, 15):
-        img_path = os.path.join(dummy_image_dir, f"dummy_image_{i}.png")
-        if not os.path.exists(img_path):
-            img = Image.new('RGB', (300, 300), color = (i*20 % 255, i*30 % 255, i*40 % 255))
-            d = ImageDraw.Draw(img)
-            d.text((10,10), f"Image {i}", fill=(255,255,255))
-            img.save(img_path)
-        dummy_image_paths.append(img_path)
-
-    # Example of a pre-existing layout (e.g., loaded from a config file)
-    # The structure should match what _get_default_layout_structure produces,
-    # but now each path includes rotation data.
-    initial_layout = {
-        "obverse": {"path": dummy_image_paths[0], "rotation": 0},
-        "reverse": {"path": dummy_image_paths[1], "rotation": 90},
-        "top": None, "bottom": None, "left": None, "right": None,
-        "intermediate_obverse_top": [{"path": dummy_image_paths[2], "rotation": 0}, {"path": dummy_image_paths[3], "rotation": 180}],
-        "intermediate_obverse_bottom": [],
-        "intermediate_obverse_left": [], "intermediate_obverse_right": [],
-        "intermediate_reverse_top": [], "intermediate_reverse_bottom": [{"path": dummy_image_paths[4], "rotation": 0}],
-        "intermediate_reverse_left": [], "intermediate_reverse_right": [],
-    }
-
-    dialog = ComplexLayoutDialog(root, dummy_image_paths, current_layout=initial_layout)
-
-    # After the dialog closes, you can access the result_layout
-    final_layout_result = dialog.result_layout
-    if final_layout_result:
-        print("Final Layout Defined:")
-        print(json.dumps(final_layout_result, indent=4))
-    else:
-        print("Layout definition cancelled.")
-    
-    # Clean up dummy images (optional)
-    # for img_path in dummy_image_paths:
-    #     os.remove(img_path)
-    # os.rmdir(dummy_image_dir)
-
-    root.destroy()
+    def get_layout_config(self):
+        """
+        Returns the final layout configuration after the dialog is closed.
+        This method should be called after the dialog is destroyed to get the result.
+        
+        Returns:
+            The layout configuration dictionary or None if canceled
+        """
+        return self.result_layout

@@ -35,7 +35,7 @@ This project has been developed to streamline the image processing pipeline, ins
     * For the image used for scale detection, it extracts both the artifact and the physical ruler into separate files if needed (though the final stitched ruler is digital).
 * **Digital Ruler Replacement:**
     * Based on the detected scale and object size, selects an appropriate digital ruler template (1cm, 2cm, or 5cm).
-    * Scales this digital ruler and saves it as `NAME_07.tif`.
+    * Scales this digital ruler and saves it as `NAME_ruler.tif`.
 * **Image Stitching/Compositing:**
     * Arranges multiple extracted object views (obverse, reverse, top, bottom, left, right, and rotated sides) and the scaled digital ruler into a final composite image layout.
     * Supports padding between stitched views.
@@ -124,8 +124,8 @@ The application will:
     * Extract the main artifact from the ruler image (e.g., `NAME_02_object.tif`).
     * Extract main artifacts from all other view images (e.g., `NAME_01_object.tif`, `NAME_04_object.tif`, etc.).
     * Choose an appropriate digital ruler template (1cm, 2cm, or 5cm) based on the extracted main object's size.
-    * Scale this digital ruler template and save it as `NAME_07.tif`.
-    * Stitch all `*_object.tif` views and the scaled digital `_07.tif` ruler into a composite image.
+    * Scale this digital ruler template and save it as `NAME_ruler.tif`.
+    * Stitch all `*_object.tif` views and the scaled digital `_ruler.tif` ruler into a composite image.
     * Add padding between views, and optionally add a logo.
     * Apply a final margin and save as `NAME_stitched.tif` and `NAME_stitched.jpg` with embedded metadata.
 

@@ -97,35 +97,40 @@ def add_rotate_overlay(self, img):
     
     return img_copy
 
-def get_tk_thumbnail(self, img_path, size=None, add_rotate_icon=True):
-    """
-    Retrieves/creates Tkinter-compatible thumbnails.
-    This method should be called by ComplexLayoutDialog.
-    """
-    if size is None:
-        size = self.thumbnail_size
-    cache_key = (img_path, size, self.image_rotations.get(img_path, 0), add_rotate_icon) # Include rotation in cache key
-    
-    if cache_key not in self.tk_thumbnails_cache:
-        if img_path in self.pil_images_cache:
-            pil_image = Image.open(img_path) # Re-open original image
-            rotation_degrees = self.image_rotations.get(img_path, 0)
-            if rotation_degrees != 0:
-                pil_image = pil_image.rotate(rotation_degrees, expand=True) # Apply rotation
-            
-            pil_image.thumbnail(size, Image.Resampling.LANCZOS) # Resize for thumbnail            # Add rotate overlay if requested
-            if add_rotate_icon:
-                # Use the function directly instead of through self
-                # Make sure we have imported math for the circular calculations
-                try:
-                    pil_image = add_rotate_overlay(self, pil_image)
-                except Exception as e:
-                    print(f"Error adding rotate overlay: {e}")
-            
-            self.tk_thumbnails_cache[cache_key] = ImageTk.PhotoImage(pil_image)
-        else:
+def get_tk_thumbnail(self, image_path, add_rotate_icon=False):
+    """Get a Tkinter-compatible thumbnail for a given image path."""
+    if not image_path or not os.path.exists(image_path):
+        return None
+        
+    # We always set add_rotate_icon to False since rotation is disabled
+    add_rotate_icon = False
+        
+    # Check if thumbnail is already cached
+    cache_key = (image_path, self.image_rotations.get(image_path, 0), add_rotate_icon)
+    if cache_key in self.tk_thumbnails_cache:
+        return self.tk_thumbnails_cache[cache_key]
+        
+    # Get or create the PIL image
+    if image_path not in self.pil_images_cache:
+        try:
+            pil_img = Image.open(image_path)
+            self.pil_images_cache[image_path] = pil_img
+        except Exception as e:
+            print(f"Error loading image {image_path}: {e}")
             return None
-    return self.tk_thumbnails_cache[cache_key]
+    else:
+        pil_img = self.pil_images_cache[image_path]
+
+    # Resize maintaining aspect ratio
+    thumb = pil_img.copy()
+    thumb.thumbnail(self.thumbnail_size)
+        
+    # Convert to Tkinter-compatible format
+    tk_img = ImageTk.PhotoImage(thumb)
+        
+    # Cache the result
+    self.tk_thumbnails_cache[cache_key] = tk_img
+    return tk_img
 
 def rotate_image(self, img_path):
     """

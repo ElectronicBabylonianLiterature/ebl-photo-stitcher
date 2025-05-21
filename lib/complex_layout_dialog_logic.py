@@ -25,8 +25,8 @@ def load_current_layout_into_ui(self):
         for slot_name, assigned_value in self.result_layout.items():
             if isinstance(assigned_value, dict) and "path" in assigned_value:
                 img_path = assigned_value["path"]
-                rotation = assigned_value.get("rotation", 0)
-                self.image_rotations[img_path] = rotation
+                # Always set rotation to 0 (removing rotation functionality)
+                self.image_rotations[img_path] = 0
                 
                 if not self.layout_rectangles[slot_name]["is_sequence"]:
                     # This is a main slot
@@ -37,10 +37,16 @@ def load_current_layout_into_ui(self):
                         self.available_labels[img_path].master.pack_forget()
             elif isinstance(assigned_value, list): # Sequence slots
                 # For sequences, we need to ensure images are hidden and indicators updated
-                for item in assigned_value: # Each item is a dict: {"path": ..., "rotation": ...}
-                    img_path = item["path"]
-                    rotation = item.get("rotation", 0)
-                    self.image_rotations[img_path] = rotation # Ensure rotation is loaded
+                for item in assigned_value:
+                    # Handle both string paths and dictionary items
+                    if isinstance(item, dict) and "path" in item:
+                        img_path = item["path"]
+                    else:
+                        img_path = item  # Assume it's a string path
+                        
+                    # Always set rotation to 0 (removing rotation functionality)
+                    self.image_rotations[img_path] = 0
+                    
                     if img_path in self.available_labels:
                         self.available_labels[img_path].master.pack_forget()
                     
@@ -73,11 +79,23 @@ def on_ok(self):
                     "rotation": self.image_rotations.get(img_path, 0)
                 }
         else: # Sequence slots
-            sequence_paths = self.result_layout.get(slot_name, [])
-            final_layout[slot_name] = [
-                {"path": path, "rotation": self.image_rotations.get(path, 0)}
-                for path in sequence_paths
-            ]
+            sequence_items = self.result_layout.get(slot_name, [])
+            final_layout[slot_name] = []
+            
+            for item in sequence_items:
+                if isinstance(item, dict) and "path" in item:
+                    # Item is already a dictionary with path
+                    img_path = item["path"]
+                    final_layout[slot_name].append({
+                        "path": img_path,
+                        "rotation": self.image_rotations.get(img_path, 0)
+                    })
+                elif isinstance(item, str):
+                    # Item is just a path string
+                    final_layout[slot_name].append({
+                        "path": item,
+                        "rotation": self.image_rotations.get(item, 0)
+                    })
     
     self.result_layout = final_layout # Update the result layout with paths and rotations
 
@@ -134,7 +152,8 @@ def on_ok(self):
             )
             return
 
-    # If all validations pass, close the dialog
+    # If all validations pass, set result ready and close the dialog
+    self.result_ready_var.set(True)
     self.destroy()
 
 def on_cancel(self):
@@ -143,4 +162,5 @@ def on_cancel(self):
     This method should be called by ComplexLayoutDialog.
     """
     self.result_layout = None  # Indicate cancellation
+    self.result_ready_var.set(True)
     self.destroy()

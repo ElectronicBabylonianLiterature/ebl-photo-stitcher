@@ -201,9 +201,19 @@ class ImageProcessorApp:
         self.blb.pack(side=tk.LEFT)
 
     def _create_process_button_ui(self, p):
-        self.prb = ttk.Button(p, text="Start Processing",
+        button_frame = ttk.Frame(p)
+        button_frame.pack(pady=(15, 5))
+        
+        self.prb = ttk.Button(button_frame, text="Start Processing",
                               command=self.start_processing_thread)
-        self.prb.pack(pady=(15, 5), ipadx=10, ipady=5)
+        self.prb.pack(side=tk.LEFT, ipadx=10, ipady=5, padx=5)
+        
+        self.stop_button = ttk.Button(button_frame, text="Stop",
+                                     command=self.stop_processing, state=tk.DISABLED)
+        self.stop_button.pack(side=tk.LEFT, ipadx=10, ipady=5, padx=5)
+        
+        # Add a flag to track if processing is running
+        self.processing_running = False
 
     def _create_progress_bar_ui(self, p):
         pf = ttk.Frame(p, padding="0 0 0 5")
@@ -364,8 +374,16 @@ class ImageProcessorApp:
     def update_progress_bar(self, value): self.progress_var.set(
         value); self.root.update_idletasks()
 
+    def stop_processing(self):
+        if self.processing_running:
+            self.processing_running = False
+            print("Stopping processing. Please wait for current tasks to complete...")
+            self.stop_button.config(state=tk.DISABLED)
+
     def processing_finished_ui_update(self):
         self.prb.config(state=tk.NORMAL)
+        self.stop_button.config(state=tk.DISABLED)
+        self.processing_running = False
         messagebox.showinfo("Processing Complete", "Workflow finished.")
         self.update_progress_bar(0)
 
@@ -393,6 +411,8 @@ class ImageProcessorApp:
         self.lt.configure(state=tk.DISABLED)
         print(f"Starting processing with {ms} ruler...\n")
         self.prb.config(state=tk.DISABLED)
+        self.stop_button.config(state=tk.NORMAL)
+        self.processing_running = True
         self.update_progress_bar(0)
 
         threading.Thread(target=run_complete_image_processing_workflow,
@@ -414,7 +434,8 @@ class ImageProcessorApp:
                              self.update_progress_bar,
                              self.processing_finished_ui_update,
                              self.museum_var.get(),
-                             self.root # ADDED: Pass the main app window as parent for dialogs
+                             self.root, # ADDED: Pass the main app window as parent for dialogs
+                             self  # Pass self to access processing_running flag
                          ),
                          daemon=True).start()
 

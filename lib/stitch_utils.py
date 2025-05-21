@@ -14,7 +14,7 @@ except ImportError:
     def resize_image_maintain_aspect(*args): raise ImportError("resize_image_maintain_aspect missing")
 
 OBJECT_FILE_SUFFIX = "_object.tif"
-SCALED_RULER_FILE_SUFFIX = "_07.tif"
+SCALED_RULER_FILE_SUFFIX = "_ruler.tif"
 
 def find_processed_image_file(subfolder_path, base_name, view_specific_part, general_suffix):
     target_filename = f"{base_name}{view_specific_part}{general_suffix}"
