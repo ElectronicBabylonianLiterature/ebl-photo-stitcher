@@ -273,11 +273,17 @@ def extract_and_save_center_object(
             input_img = Image.fromarray(img_rgb)
         else:
             input_img = Image.open(input_image_filepath)
+            input_img.load()
     except Exception as e:
         raise FileNotFoundError(
             f"Could not load image for object extraction: {input_image_filepath} - {e}")
 
     output_img = remove(input_img)
+    
+    try:
+        input_img.close()
+    except Exception:
+        pass
 
     alpha = np.array(output_img.getchannel('A'))
     custom_alpha_tolerance = DEFAULT_BACKGROUND_DETECTION_COLOR_TOLERANCE * 2
@@ -386,7 +392,20 @@ def extract_and_save_center_object(
         dummy_contour = np.array(
             [[[0, 0]], [[0, 1]], [[1, 1]], [[1, 0]]], dtype=np.int32)
         
+        try:
+            output_img.close()
+            selected_mask_pil.close()
+            filtered_output.close()
+            cropped_img.close()
+            bg_img.close()
+        except Exception:
+            pass
+        
         return output_image_filepath, dummy_contour
     except Exception as e:
+        try:
+            output_img.close()
+        except Exception:
+            pass
         raise IOError(
             f"Error saving extracted artifact to {output_image_filepath}: {e}")

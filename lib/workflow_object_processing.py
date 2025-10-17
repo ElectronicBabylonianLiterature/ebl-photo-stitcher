@@ -63,7 +63,18 @@ def extract_ruler_contour(path_ruler_extract_img, detected_bg_color_from_image,
     Returns:
         str: Path to temporary isolated ruler file or None
     """
-    ruler_loaded_arr = cv2.imread(path_ruler_extract_img)
+    import time
+    import os
+    
+    if not os.path.exists(path_ruler_extract_img):
+        raise ValueError(f"File does not exist: {path_ruler_extract_img}")
+    
+    ruler_loaded_arr = cv2.imread(path_ruler_extract_img, cv2.IMREAD_COLOR)
+    
+    if ruler_loaded_arr is None:
+        time.sleep(0.5)
+        ruler_loaded_arr = cv2.imread(path_ruler_extract_img, cv2.IMREAD_COLOR)
+    
     if ruler_loaded_arr is None:
         raise ValueError(f"Fail reload {path_ruler_extract_img}")
 

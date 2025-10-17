@@ -135,6 +135,9 @@ def apply_all_metadata(
         img = None
         backup_path = None
         try:
+            import time
+            
+            time.sleep(0.1)
 
             try:
                 backup_path = image_path + ".backup"
@@ -177,11 +180,22 @@ def apply_all_metadata(
 
             new_xmp_data['Xmp.xmp.MetadataDate'] = datetime.datetime.now().isoformat()
 
-            img.modify_exif(new_exif_data)
-            img.modify_xmp(new_xmp_data)
+            try:
+                img.modify_exif(new_exif_data)
+            except Exception as e_exif:
+                print(f"      Warning: Could not modify EXIF: {e_exif}")
+            
+            try:
+                img.modify_xmp(new_xmp_data)
+            except Exception as e_xmp:
+                print(f"      Warning: Could not modify XMP: {e_xmp}")
 
-            img.close()
-            img = None
+            try:
+                img.close()
+            except Exception as e_close:
+                print(f"      Warning: Error closing image: {e_close}")
+            finally:
+                img = None
 
             print(
                 f"      All metadata (EXIF, XMP) applied successfully via {exiv2_module_name}.")
@@ -197,17 +211,33 @@ def apply_all_metadata(
 
         except Exception as e:
             print(f"      Error applying metadata with {exiv2_module_name}: {e}")
+            import traceback
+            traceback.print_exc()
 
+            if img is not None:
+                try:
+                    img.close()
+                except Exception:
+                    pass
+                finally:
+                    img = None
+            
             if backup_path and os.path.exists(backup_path):
                 try:
                     print("      Restoring backup due to metadata error...")
 
-                    if img is not None:
-                        img.close()
-                        img = None
-
                     if os.path.exists(image_path):
-                        os.remove(image_path)
+                        try:
+                            os.remove(image_path)
+                        except Exception as e_del:
+                            print(f"      Warning: Could not delete corrupted file: {e_del}")
+                            import time
+                            time.sleep(0.5)
+                            try:
+                                os.remove(image_path)
+                            except Exception:
+                                pass
+                    
                     shutil.copy2(backup_path, image_path)
                     os.remove(backup_path)
                 except Exception as e_restore:
