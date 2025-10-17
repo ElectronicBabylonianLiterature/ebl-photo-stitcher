@@ -191,32 +191,7 @@ class EventHandlers:
         measurements_file = resource_path(
             os.path.join(assets_path, measurements_filename))
 
-        print("\n--- DEBUG: Measurements Loading ---")
-        print(f"Assets folder path: {resource_path(assets_path)}")
-        print(f"Measurements file path: {measurements_file}")
-        print(f"File exists: {os.path.exists(measurements_file)}")
-
         if os.path.exists(measurements_file):
-            try:
-                with open(measurements_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                print(f"Successfully loaded JSON data, contains {len(data)} items")
-
-                if isinstance(data, list) and len(data) > 0:
-                    sample = data[0]
-                    print(f"Sample item format: {list(sample.keys())}")
-                    has_id = "_id" in sample
-                    has_width = "width" in sample
-                    print(f"Has '_id' field: {has_id}")
-                    print(f"Has 'width' field: {has_width}")
-
-                    if has_id and has_width:
-                        print(f"Sample: ID={sample['_id']}, width={sample['width']}")
-                else:
-                    print("Data doesn't appear to be a list or is empty")
-            except Exception as e:
-                print(f"Error testing measurements file: {e}")
-
             try:
                 from measurements_utils import load_measurements_from_json
                 app_instance.measurements_dict = load_measurements_from_json(
@@ -224,7 +199,7 @@ class EventHandlers:
                 app_instance.measurements_loaded = len(
                     app_instance.measurements_dict) > 0
                 print(
-                    f"Reload result: loaded={app_instance.measurements_loaded}, entries={len(app_instance.measurements_dict)}")
+                    f"Loaded {len(app_instance.measurements_dict)} measurements from {measurements_filename}")
 
                 if app_instance.measurements_loaded and hasattr(app_instance, "measurements_checkbox"):
                     app_instance.measurements_checkbox.state(['!disabled'])
@@ -234,5 +209,3 @@ class EventHandlers:
                             child.destroy()
             except Exception as e:
                 print(f"Error reloading measurements: {e}")
-
-        print("--- End DEBUG ---\n")

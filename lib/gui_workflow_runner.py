@@ -72,7 +72,6 @@ def run_complete_image_processing_workflow(
         if app_root_window and hasattr(app_root_window, 'advanced_tab'):
             advanced_settings = app_root_window.advanced_tab.get_settings()
             rotation_angle = advanced_settings.get('rotation_angle', 0)
-            print(f"DEBUG: Got rotation angle from advanced settings: {rotation_angle}")
     except Exception as e:
         print(f"Warning: Could not get rotation settings: {e}")
 
@@ -112,8 +111,6 @@ def run_complete_image_processing_workflow(
             print("   Warning: Could not import rotation module. Skipping rotation.")
         except Exception as e:
             print(f"   Warning: Error during rotation: {e}")
-    else:
-        print(f"DEBUG: No rotation requested (angle: {rotation_angle})")
 
     if enable_hdr_processing:
         print("Step 0b: HDR Processing...")
@@ -562,10 +559,6 @@ def process_single_subfolder(subfolder_path_item, subfolder_name_item, image_ext
         object_artifact_suffix_config, museum_selection
     )
     result['cr2_conversions'] += cr2_conv_other
-    print(f"   Debug: Excel measurement record creation check:")
-    print(f"     use_measurements_from_database: {use_measurements_from_database}")
-    print(f"     measurements_dict: {measurements_dict is not None}")
-    print(f"     measurements_used: {measurements_used}")
     
     if use_measurements_from_database and measurements_dict and measurements_used:
         from workflow_scale_detection import was_excel_measurement_used

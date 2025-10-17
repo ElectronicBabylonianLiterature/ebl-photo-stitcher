@@ -28,21 +28,8 @@ def calculate_stitching_layout(
     final_margin_px=100, museum_selection="British Museum", 
     custom_layout=None, logo_standard_width_px=1800
 ):
-    print(f"DEBUG: calculate_stitching_layout called with:")
-    print(f"  object_images_dict keys: {list(object_images_dict.keys()) if object_images_dict else 'None'}")
-    print(f"  ruler_image_path: {ruler_image_path}")
-    print(f"  logo_image_path: {logo_image_path}")
-    print(f"  custom_layout: {custom_layout}")
-    print(f"  museum_selection: {museum_selection}")
-
     if not object_images_dict:
         raise ValueError("No object images provided for layout calculation")
-
-    for view_name, image_data in object_images_dict.items():
-        print(f"  Checking view '{view_name}':")
-        if isinstance(image_data, np.ndarray):
-            if image_data.size > 0:
-                height, width = image_data.shape[:2]
 
     standard_keys = ["obverse", "reverse", "top", "bottom"]
 
