@@ -13,6 +13,7 @@
 - [Configuration](#configuration)
 - [Packaging (Optional)](#packaging-optional)
 - [U2NET Model Setup](#u2net-model-setup)
+- [Troubleshooting: Manual U2NET Model Installation](#troubleshooting-manual-u2net-model-installation)
 
 ## Overview
 
@@ -330,3 +331,87 @@ The application uses the U2NET model for AI-powered object extraction via the re
 2. Place it in the assets folder of your project
 3. When the application runs, it will automatically copy this model to the expected location in your user directory (`~/.u2net/u2net.onnx`)
 4. This prevents the application from attempting to download the model during processing, which can be slow or fail if internet connectivity is limited.
+
+## Troubleshooting: Manual U2NET Model Installation
+
+If the application shows an error that it cannot download the U2NET model automatically, or if object extraction is failing, you can manually download and install the model file. Follow these step-by-step instructions:
+
+### Step 1: Download the Model File
+
+1. Open your web browser and go to: [https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx](https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx)
+2. Your browser should automatically start downloading the `u2net.onnx` file (approximately 176MB)
+3. Wait for the download to complete
+4. **Important:** Do NOT open or double-click this file - it's a model file, not something you can run directly
+
+### Step 2: Find Your User Folder
+
+The model file needs to be placed in a hidden folder in your user directory. Here's how to access it:
+
+#### On Windows:
+
+1. Press **Win + R** on your keyboard (this opens the "Run" dialog)
+2. Type `%USERPROFILE%` and press Enter
+3. This opens your user folder (typically `C:\Users\YourName\`)
+4. In the address bar at the top, you can now navigate to the `.u2net` folder (see Step 3)
+
+**Alternative method for Windows:**
+- Open File Explorer
+- Click on "This PC" or "My Computer"
+- Navigate to `C:\Users\YourName\` (replace "YourName" with your actual Windows username)
+
+#### On Mac:
+
+1. Open **Finder**
+2. In the menu bar, click **Go** → **Go to Folder...** (or press **Shift + Command + G**)
+3. Type `~` (tilde symbol) and press Enter
+4. This opens your user folder (typically `/Users/YourName/`)
+5. From here you can navigate to the `.u2net` folder (see Step 3)
+
+**Alternative method for Mac:**
+- Open Finder
+- In the menu bar, click **Go** → **Home** (or press **Shift + Command + H**)
+- This takes you directly to your user folder
+
+### Step 3: Create the .u2net Folder and Place the Model File
+
+#### On Windows:
+
+1. Once you're in your user folder (from Step 2), you need to create a folder named `.u2net`
+2. Right-click in an empty area → **New** → **Folder**
+3. Name it `.u2net` (including the dot at the beginning)
+4. Windows might warn you about starting a name with a dot - that's okay, proceed anyway
+5. Open the `.u2net` folder you just created
+6. Copy or move the downloaded `u2net.onnx` file into this folder
+7. The final path should look like: `C:\Users\YourName\.u2net\u2net.onnx`
+
+#### On Mac:
+
+1. Once you're in your user folder (from Step 2), you need to create a folder named `.u2net`
+2. **Important:** Folders starting with a dot are hidden by default on Mac. To see hidden files:
+   - Press **Command + Shift + .** (period) in Finder - this toggles showing hidden files
+3. Right-click in an empty area → **New Folder**
+4. Name it `.u2net` (including the dot at the beginning)
+5. Open the `.u2net` folder you just created
+6. Copy or move the downloaded `u2net.onnx` file into this folder
+7. The final path should look like: `/Users/YourName/.u2net/u2net.onnx`
+
+### Step 4: Verify the Installation
+
+1. Make sure the file is named exactly `u2net.onnx` (not `u2net.onnx.txt` or `u2net (1).onnx`)
+2. Check the file size: it should be approximately 176MB (exactly 176,681,672 bytes)
+3. Restart the eBL Photo Stitcher application
+4. Try processing images again
+
+### Alternative Installation Location (For Packaged App Users)
+
+If you're using a packaged executable version (not running from Python), you can also place the model file in the application's assets folder:
+
+#### On Windows:
+- Navigate to where the executable is located
+- Look for an `assets` folder next to the .exe file
+- Place `u2net.onnx` directly in the `assets` folder
+
+#### On Mac:
+- Right-click on the application → **Show Package Contents**
+- Navigate to `Contents/MacOS/assets/`
+- Place `u2net.onnx` in this folder
