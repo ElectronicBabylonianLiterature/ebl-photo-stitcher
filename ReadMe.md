@@ -1,5 +1,7 @@
 # eBL Photo Stitcher
 
+[![Tests](https://github.com/ElectronicBabylonianLiterature/ebl-photo-stitcher/workflows/Tests/badge.svg)](https://github.com/ElectronicBabylonianLiterature/ebl-photo-stitcher/actions)
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -7,10 +9,13 @@
 - [File Structure Overview](#file-structure-overview)
 - [Prerequisites](#prerequisites)
 - [Setup](#setup)
+- [Installing on macOS](#installing-on-macos)
 - [Usage (Python)](#usage-python)
 - [Usage (GUI)](#usage-gui)
 - [HDR Processing](#hdr-processing)
 - [Configuration](#configuration)
+- [Testing](#testing)
+- [Development](#development)
 - [Packaging (Optional)](#packaging-optional)
 - [U2NET Model Setup](#u2net-model-setup)
 - [Troubleshooting: Manual U2NET Model Installation](#troubleshooting-manual-u2net-model-installation)
@@ -119,6 +124,108 @@ The project is modular, with specific tasks handled by different Python scripts:
         * `General_External_photo_ruler.svg` (digital ruler template for non-eBL/VAM)
         * `u2net.onnx` (U2NET model for object extraction - see U2NET Model Setup section)
         * `sippar.json` (optional - tablet measurements database for British Museum Sippar Collection)
+
+## Installing on macOS
+
+These instructions are for people who want to **use** the ready-made Mac app. You do not need Python or any programming knowledge. You will only need the **Terminal** app for a few copy-and-paste commands.
+
+> **A few tips before you start**
+> * When these instructions say **"run"** a command, it means: copy the command, paste it into the Terminal window, and press **Enter** (⏎).
+> * Paste **one command at a time**. Wait for each one to finish (the prompt, ending in `%` or `$`, comes back) before you paste the next one.
+> * When Terminal asks for your **password**, type your normal Mac login password. **Nothing appears on screen while you type.** This is normal. Just type it and press Enter.
+> * To open Terminal, press **⌘ Command + Space**, type `Terminal` and press Enter. You can also find it in **Applications → Utilities → Terminal**.
+
+### Step 1: Download and Unzip the App
+
+1. Go to the [latest release page](https://github.com/ElectronicBabylonianLiterature/ebl-photo-stitcher/releases/latest).
+2. Under **Assets**, download the Mac file (`eBL_Photo_Stitcher_macOS.zip`).
+3. Double-click the downloaded `.zip` file in your **Downloads** folder to unzip it. This creates **eBL Photo Stitcher.app**.
+4. Drag **eBL Photo Stitcher.app** into your **Applications** folder.
+
+> **Note:** The Mac app is built automatically on Apple Silicon (M1/M2/M3/M4) Macs. To check which kind of Mac you have, click the Apple menu  → **About This Mac**. If it lists a **Chip** called "Apple M…", the app is built for your Mac. If it lists an **Intel** processor and the app does not start, see [Packaging (Optional)](#packaging-optional) to build the app yourself.
+
+### Step 2: Allow macOS to Open the App
+
+The app is not signed with an Apple developer certificate. When you double-click it the first time, macOS will probably refuse to open it and show a message like *"Apple could not verify 'eBL Photo Stitcher' is free of malware"* or *"Apple can't check it for malicious software"*.
+
+**Option A: System Settings (try this first)**
+
+1. Try to open the app once. You will get the warning above. Click **Done** or **OK**.
+2. Open the Apple menu  → **System Settings** → **Privacy & Security** (in the sidebar; you may need to scroll down).
+3. Scroll down to the **Security** section. You should see a message about eBL Photo Stitcher with an **Open Anyway** button. Click it.
+   * This button only appears for about **one hour** after you tried to open the app.
+4. Enter your login password (or use Touch ID) and click **Open** in the next dialog.
+
+If the warning keeps coming back after you click **Open Anyway**, use Option B.
+
+**Option B: Terminal (the method that worked for us)**
+
+This removes the "downloaded from the internet" flag that makes macOS block the app.
+
+1. Open **Terminal**.
+2. Type (or paste) the following, **followed by one space**, but **do not press Enter yet**:
+   ```bash
+   sudo xattr -rd com.apple.quarantine 
+   ```
+3. Open **Finder → Applications**. Drag the **eBL Photo Stitcher** app icon onto the Terminal window and drop it there. This adds the app's full location to the command. It should now look like this:
+   ```bash
+   sudo xattr -rd com.apple.quarantine /Applications/eBL\ Photo\ Stitcher.app
+   ```
+   Make sure there is a **space between `quarantine` and `/Applications`**. If the two run together, the command will not work.
+4. Press **Enter**.
+5. Type your Mac login password when asked. Remember: nothing appears while you type. Then press **Enter**.
+6. If no error appears and the prompt comes back, it worked. Now double-click the app in **Applications** to open it.
+
+> You will need to repeat Step 2 each time you download a **new version** of the app.
+
+### Step 3: If the App Icon Bounces and Then Disappears
+
+If the app no longer shows the security warning, but its icon bounces in the Dock and then disappears without opening a window, a required graphics library (**Cairo**) is probably missing. Newer releases include Cairo inside the app, so try the [latest release](https://github.com/ElectronicBabylonianLiterature/ebl-photo-stitcher/releases/latest) first. If the problem continues, install Cairo yourself with **Homebrew**, a free tool for installing software on a Mac.
+
+**3a. Check whether Homebrew is already installed**
+
+Run:
+```bash
+brew --version
+```
+* If you see a version number (e.g. `Homebrew 4.x.x`), skip to **3c**.
+* If you see `command not found`, continue with **3b**.
+
+**3b. Install Homebrew**
+
+1. Run this command (it is the official installer from [brew.sh](https://brew.sh)):
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+2. Enter your password when asked, and press **Enter** again if it asks you to confirm. The installation takes several minutes.
+3. **Important:** When the installer finishes, it prints a section called **"Next steps"** with two or three commands. They look like this (the exact file name may differ on your Mac):
+   ```bash
+   echo >> /Users/YOUR_NAME/.zprofile
+   echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> /Users/YOUR_NAME/.zprofile
+   eval "$(/opt/homebrew/bin/brew shellenv)"
+   ```
+   Copy these commands **from your own Terminal window**, not from this page, and run them **one at a time**. These commands print nothing, so it will look as if nothing happened. That is normal.
+4. **Close the Terminal window and open a new one.** If macOS asks whether to terminate running processes, it is fine to close it.
+5. Run `brew --version` again. You should now see a version number. If you still get `command not found`, repeat point 3 above. The "Next steps" commands were probably missed or pasted together.
+
+**3c. Install Cairo**
+
+Run:
+```bash
+brew install cairo
+```
+This takes a minute or two. When the prompt comes back, close Terminal and try opening **eBL Photo Stitcher** again.
+
+### Step 4: Still Not Working? Find the Error Message
+
+If the app still does not open, you can start it from Terminal to see the error message. Then you can send the message to the developers.
+
+1. In **Finder → Applications**, right-click (or Control-click) **eBL Photo Stitcher** and choose **Show Package Contents**.
+2. Open **Contents → MacOS**. Inside you will find a file called **eBL Photo Stitcher**. This is the program itself.
+3. Open **Terminal**. Drag that file onto the Terminal window and press **Enter**.
+4. The app will try to start, and any error messages will appear in the Terminal window. Take a screenshot (**⌘ Command + Shift + 4**) or copy the text, and include it when you [report the issue](https://github.com/ElectronicBabylonianLiterature/ebl-photo-stitcher/issues).
+
+> If the app opens but object extraction fails, or it cannot download the AI model, see [Troubleshooting: Manual U2NET Model Installation](#troubleshooting-manual-u2net-model-installation).
 
 ## Ruler Detection Details
 
@@ -302,6 +409,106 @@ HDR processing is beneficial when you have:
 
 * **GUI Settings:** The GUI remembers the last used input folder, ruler position, photographer name, museum selection, and logo settings in a `gui_config.json` file. This file is typically stored in your user-specific application data directory.
 * **Script Constants:** Paths to digital ruler template assets and other default processing parameters are defined as constants at the top of `gui_app.py` and the respective utility modules (e.g., `stitch_images.py`). For a packaged application, these asset paths are resolved relative to the executable.
+
+## Testing
+
+The project includes comprehensive test coverage for all major components. Tests are automatically run via GitHub Actions on every push and pull request.
+
+### Quick Start
+
+```bash
+# Install test dependencies
+pip install -r requirements-test.txt
+
+# Run all tests
+python run_tests.py --mode all
+
+# Run quick tests (recommended during development)
+python run_tests.py --mode quick
+
+# Generate coverage report
+python run_tests.py --mode coverage
+```
+
+### Test Modes
+
+- **`all`** - Run all tests with coverage
+- **`unit`** - Run only fast unit tests
+- **`integration`** - Run integration tests
+- **`quick`** - Fast unit tests (no slow tests)
+- **`coverage`** - Generate full coverage report (HTML + XML)
+
+### Platform-Specific Runners
+
+```bash
+# Windows
+run_tests.bat all
+
+# Unix/Mac
+./run_tests.sh all
+```
+
+For detailed testing documentation, see [TESTING.md](TESTING.md).
+
+## Development
+
+### Setting Up Development Environment
+
+```bash
+# Clone the repository
+git clone https://github.com/ElectronicBabylonianLiterature/ebl-photo-stitcher.git
+cd ebl-photo-stitcher
+
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+# Windows:
+.venv\Scripts\activate
+# Unix/Mac:
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+pip install -r requirements-test.txt
+```
+
+### Running Tests Before Commits
+
+Always run tests before committing new features:
+
+```bash
+# Quick test (unit tests only)
+python run_tests.py --mode quick
+
+# Full test with coverage
+python run_tests.py --mode all
+```
+
+### CI/CD
+
+Tests run automatically on:
+- Push to main/master/develop branches
+- Pull requests
+- Multiple OS: Ubuntu, Windows, macOS
+- Multiple Python versions: 3.9, 3.10, 3.11
+
+View test results in the [Actions tab](https://github.com/ElectronicBabylonianLiterature/ebl-photo-stitcher/actions).
+
+### Code Quality
+
+The project uses:
+- **pytest** for testing
+- **flake8** for linting
+- **black** for code formatting
+- **isort** for import sorting
+
+Run linting:
+```bash
+flake8 lib/ gui_app.py
+black --check lib/ gui_app.py
+isort --check-only lib/ gui_app.py
+```
 
 ## Packaging (Optional)
 
