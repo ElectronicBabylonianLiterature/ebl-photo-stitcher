@@ -3,10 +3,42 @@
 import os
 import subprocess
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 pyexiv2_datas, pyexiv2_binaries, pyexiv2_hiddenimports = collect_all("pyexiv2")
 block_cipher = None
+
+# These packages call importlib.metadata at import time, which fails in the
+# frozen app ("No package metadata was found for ...") unless the dist-info is bundled.
+METADATA_PACKAGES = [
+    "imageio",
+    "rembg",
+    "pymatting",
+    "onnxruntime",
+    "numpy",
+    "scikit-image",
+    "pooch",
+    "tqdm",
+    "requests",
+    "pillow",
+    "opencv-python",
+    "rawpy",
+    "piexif",
+    "cairosvg",
+]
+
+
+def collect_metadata(packages):
+    datas = []
+    for package in packages:
+        try:
+            datas += copy_metadata(package)
+        except Exception:
+            print(f"WARNING: no metadata found for {package}, skipping.")
+    return datas
+
+
+metadata_datas = collect_metadata(METADATA_PACKAGES)
 
 def get_homebrew_prefix():
     """Get the Homebrew prefix path (/usr/local or /opt/homebrew)."""
@@ -60,7 +92,8 @@ a = Analysis(
         ("assets", "assets"),
         ("lib", "lib"),
     ]
-    + pyexiv2_datas,
+    + pyexiv2_datas
+    + metadata_datas,
     hiddenimports=[
         "cv2",
         "numpy",
